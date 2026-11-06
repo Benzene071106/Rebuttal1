@@ -253,6 +253,10 @@ src/components/NegotiationPanel.tsx  Negotiation transcript with the agent's rea
 src/components/IncidentsPanel.tsx  Self-healing incident log (AG Grid)
 src/components/ShieldPanel.tsx  Dispute shield: paid orders and their risk (AG Grid with risk renderers and detail rows)
 ```
+## Team
+- Krish Singh
+- Harshit Tiwari
+- Sarthak Seth
 
 ## License
 

@@ -203,13 +203,15 @@ export default function AskStudio() {
         </p>
       </div>
       {/* Wider than the app's column: the canvas needs the room next to the AI and Compose panels. */}
-      <div className="relative left-1/2 w-[calc(100vw-3rem)] max-w-[1800px] -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-panel">
+      <p className="rounded-md border border-line bg-panel px-3 py-2 text-xs text-muted sm:hidden">The dashboard is built for a wider screen. On a phone, swipe sideways inside it, or open this page on a laptop.</p>
+      <div className="relative left-1/2 w-[calc(100vw-1.5rem)] max-w-[1800px] -translate-x-1/2 overflow-x-auto overflow-y-hidden rounded-xl border border-line bg-panel sm:w-[calc(100vw-3rem)] sm:overflow-hidden">
         {failed ? (
           <p className="p-4 text-sm text-danger">The dashboard couldn&apos;t load: {failed}</p>
         ) : !lib || !studioData ? (
           <p className="p-4 text-sm text-muted">Loading the dashboard…</p>
         ) : (
-          <div style={{ height: "78vh", minHeight: 560 }}>
+          // Phones get the full desktop layout to scroll across, instead of a squashed one.
+          <div className="min-w-[1000px] sm:min-w-0" style={{ height: "78vh", minHeight: 560 }}>
             <lib.Studio
               key={mode}
               modules={lib.modules}

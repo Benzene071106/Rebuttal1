@@ -65,16 +65,22 @@ function BuyerCell({ data }: ICellRendererParams<Row>) {
   const t = data?.dispute.disputed_transactions[0];
   const shops = useCases().data?.network?.[data?.id ?? ""];
   return (
-    <div className="flex h-full flex-col justify-center leading-tight">
-      <span className="flex items-center gap-1.5 font-medium">
+    <div className="flex h-full w-full min-w-0 flex-col justify-center leading-tight">
+      <span className="font-medium">
         {t?.buyer?.name ?? "Unknown buyer"}
         {shops ? (
-          <span title={`Reported by ${shops} other Rebuttal shop${shops === 1 ? "" : "s"}. See Protect.`} className="rounded-full px-1.5 text-[10px] font-semibold leading-4" style={{ color: "var(--danger)", border: "1px solid currentColor" }}>
+          <span title={`Reported by ${shops} other Rebuttal shop${shops === 1 ? "" : "s"}. See Protect.`} className="ml-1.5 inline-block whitespace-nowrap rounded-full px-1.5 align-middle text-[10px] font-semibold leading-4" style={{ color: "var(--danger)", border: "1px solid currentColor" }}>
             Network: {shops}
           </span>
         ) : null}
       </span>
-      <span className="truncate text-xs text-muted">{t?.items?.[0]?.item_description ?? t?.invoice_number}</span>
+      <span className="block w-0 min-w-full truncate text-xs text-muted">{t?.items?.[0]?.item_description ?? t?.invoice_number}</span>
+      {/* Phones hide the Due in column, so the deadline rides along under the name. */}
+      {data ? (
+        <span className="text-xs sm:hidden">
+          <DueCell {...({ data } as ICellRendererParams<Row>)} />
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -458,8 +464,9 @@ export default function Inbox() {
     ],
     [],
   );
-  // Phones keep Buyer, Amount, Due in and Next step (pinned right); the rest are in the row detail.
-  const phoneCols = useMemo(() => forPhone(cols, phone, ["claim", "stage", "priority", "agent"], ["next"]), [cols, phone]);
+  // Phones keep Buyer (with the days left under the name), Amount and Next step; the rest
+  // are on the dispute page.
+  const phoneCols = useMemo(() => forPhone(cols, phone, ["expand", "claim", "stage", "priority", "agent", "due"], ["next"]), [cols, phone]);
 
 
   // Keep the seller's column layout (order, widths, sort) between visits.

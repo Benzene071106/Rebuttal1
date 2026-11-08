@@ -36,12 +36,12 @@ export default function TopBar() {
 
   return (
     <header className="border-b border-line bg-panel">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 sm:px-4">
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <span aria-hidden className="grid h-7 w-7 place-items-center rounded-md bg-accent text-sm font-bold text-panel">R</span>
           Rebuttal
         </Link>
-        <nav aria-label="Main" className="flex gap-1">
+        <nav aria-label="Main" className="-mx-1 flex gap-1 overflow-x-auto sm:mx-0">
           {TABS.map((t) => (
             <Link
               key={t.href}
@@ -53,7 +53,7 @@ export default function TopBar() {
             </Link>
           ))}
         </nav>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 sm:ml-auto sm:w-auto sm:justify-end">
           {data?.sandboxAvailable ? (
             <div className="flex rounded-md border border-line p-0.5 text-xs" role="group" aria-label="PayPal mode">
               {(["mock", "sandbox"] as const).map((m) => (
@@ -79,18 +79,22 @@ export default function TopBar() {
       </div>
       {data?.mode === "mock" && data.sandboxAvailable ? (
         <div role="note" className="border-t border-line bg-accent-soft">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm sm:px-4">
             <span>
-              <strong>Simulator: mirrors the real PayPal Disputes API</strong> (same endpoints, payloads and dispute states), so you can try every action safely.
-              The Gemini investigations are real.
+              <strong>Simulator: mirrors the real PayPal Disputes API</strong>
+              <span className="hidden sm:inline"> (same endpoints, payloads and dispute states), so you can try every action safely.
+              The Gemini investigations are real.</span>
             </span>
-            <button onClick={() => switchMode("sandbox")} className="font-medium text-accent underline">Switch to Live PayPal sandbox to see real API calls</button>
+            <button onClick={() => switchMode("sandbox")} className="font-medium text-accent underline">
+              <span className="sm:hidden">See the live sandbox</span>
+              <span className="hidden sm:inline">Switch to Live PayPal sandbox to see real API calls</span>
+            </button>
           </div>
         </div>
       ) : null}
       {data?.mode === "sandbox" && data.viewOnly ? (
         <div role="note" className="border-t border-line" style={{ background: "color-mix(in srgb, var(--offer) 10%, transparent)" }}>
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm sm:px-4">
             <span>
               <strong>Live PayPal sandbox, view-only for safety.</strong> Every visitor shares one real sandbox account, so approvals, refunds and offers are turned off here.
               The demo video shows them running live.

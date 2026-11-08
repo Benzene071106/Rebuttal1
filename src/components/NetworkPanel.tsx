@@ -40,7 +40,10 @@ function ShopsCell({ data }: ICellRendererParams<Account>) {
 function OrderCell({ data }: ICellRendererParams<Account>) {
   if (!data) return null;
   return data.pending_order ? (
-    <Badge tone="bad" title="This account has a paid order with you that hasn't shipped. See the dispute shield below.">Ordering from you: {data.pending_order}</Badge>
+    <Badge tone="bad" title="This account has a paid order with you that hasn't shipped. See the dispute shield below.">
+      <span className="hidden sm:inline">Ordering from you: </span>
+      {data.pending_order}
+    </Badge>
   ) : (
     <span className="text-sm text-muted">No</span>
   );
@@ -90,7 +93,7 @@ export default function NetworkPanel({ mode }: { mode?: "mock" | "sandbox" }) {
         rowHeight={52}
         pagination
         paginationPageSize={5}
-        paginationPageSizeSelector={[5, 10, 25]}
+        paginationPageSizeSelector={phone ? false : [5, 10, 25]}
         tooltipShowDelay={300}
         getRowId={(p) => p.data.buyer_hash}
         defaultColDef={{ cellStyle: { display: "flex", alignItems: "center" }, sortable: true }}

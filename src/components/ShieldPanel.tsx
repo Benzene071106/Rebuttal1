@@ -15,9 +15,9 @@ type Ctx = { open: string | null; recheck: (id: string) => void; viewOnly: boole
 
 function BuyerCell({ data }: ICellRendererParams<ShieldGridRow>) {
   return (
-    <div className="flex min-w-0 flex-col leading-tight">
+    <div className="flex w-full min-w-0 flex-col leading-tight">
       <span className="font-medium">{data?.buyer}</span>
-      <span className="truncate text-xs text-muted" title={data?.item}>{data?.item}</span>
+      <span className="block w-0 min-w-full truncate text-xs text-muted" title={data?.item}>{data?.item}</span>
     </div>
   );
 }
@@ -31,7 +31,7 @@ function RiskCell({ data }: ICellRendererParams<ShieldGridRow>) {
   return (
     <span className="flex items-center gap-2">
       <span className="rounded-full px-2 py-0.5 text-xs font-semibold" style={{ color: RISK_COLOR[v.risk], border: "1px solid currentColor" }}>{v.risk}</span>
-      <span className="inline-block h-1.5 w-14 overflow-hidden rounded-full bg-line">
+      <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-line sm:inline-block">
         <span className="block h-full rounded-full" style={{ width: `${Math.round(v.score)}%`, background: RISK_COLOR[v.risk] }} />
       </span>
       <span className="text-xs text-muted tabular">{Math.round(v.score)}</span>
@@ -101,7 +101,7 @@ function ShieldDetail({ data, context }: ICellRendererParams<ShieldGridRow>) {
 // risk before the seller ships it, using the buyer's dispute history with the shop.
 export default function ShieldPanel({ viewOnly }: { viewOnly: boolean }) {
   const phone = usePhone();
-  const phoneCols = useMemo(() => forPhone(COLS, phone, ["invoice_id", "ship_to", "headline"], ["risk"]), [phone]);
+  const phoneCols = useMemo(() => forPhone(COLS, phone, ["invoice_id", "ship_to", "amount", "headline"], ["risk"]), [phone]);
   const [orders, setOrders] = useState<ShieldRow[] | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

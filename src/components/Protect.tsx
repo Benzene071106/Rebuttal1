@@ -31,7 +31,7 @@ const COLS: ColDef<Buyer>[] = [
 // Before you ship: the dispute shield, and the buyers Rebuttal remembers from past disputes.
 export default function Protect() {
   const phone = usePhone();
-  const phoneCols = useMemo(() => forPhone(COLS, phone, ["email", "disputed", "claims", "lastOutcome"], ["pendingOrder"]), [phone]);
+  const phoneCols = useMemo(() => forPhone(COLS, phone, ["email", "disputes", "disputed", "claims", "lastOutcome"], ["pendingOrder"]), [phone]);
   const { data } = useCases();
   const [orders, setOrders] = useState<ShieldRow[]>([]);
 
@@ -86,7 +86,7 @@ export default function Protect() {
             rowHeight={48}
             pagination
             paginationPageSize={10}
-            paginationPageSizeSelector={[10, 25, 50]}
+            paginationPageSizeSelector={phone ? false : [10, 25, 50]}
             getRowId={(p) => p.data.email}
             defaultColDef={{ cellStyle: { display: "flex", alignItems: "center" }, sortable: true }}
             suppressCellFocus

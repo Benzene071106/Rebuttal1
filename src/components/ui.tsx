@@ -20,7 +20,7 @@ export const BUTTON = {
 
 export function Card({ title, subtitle, right, children }: { title: string; subtitle?: React.ReactNode; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-line bg-panel p-4">
+    <section className="rounded-lg border border-line bg-panel p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>

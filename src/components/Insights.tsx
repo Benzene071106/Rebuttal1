@@ -138,7 +138,7 @@ export default function Insights() {
   const enterprise = useGridEnterprise();
   const phone = usePhone();
   const columnDefs = useMemo(() => {
-    const cols = forPhone(COLS, phone, ["claim", "decision", "by", "closed", "refunded"], ["result"]);
+    const cols = forPhone(COLS, phone, ["claim", "decision", "by", "closed", "kept", "refunded"], ["result"]);
     return enterprise ? enterpriseCols(cols) : cols;
   }, [enterprise, phone]);
   const enterpriseProps = useMemo(() => enterprise
@@ -288,7 +288,7 @@ export default function Insights() {
           rowHeight={48}
           pagination
           paginationPageSize={10}
-          paginationPageSizeSelector={[10, 25, 50, 100]}
+          paginationPageSizeSelector={phone ? false : [10, 25, 50, 100]}
           tooltipShowDelay={400}
           getRowId={(p) => p.data.id}
           onRowClicked={(e) => {

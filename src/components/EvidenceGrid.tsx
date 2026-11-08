@@ -5,6 +5,7 @@ import { AgGridReact } from "ag-grid-react";
 import { useMemo } from "react";
 import type { Recommendation } from "@/lib/types";
 import { gridTheme } from "./grid";
+import { usePhone } from "./phone";
 
 type Evidence = Recommendation["evidence"][number];
 
@@ -15,14 +16,17 @@ const WRAP: CellStyle = { lineHeight: "1.4", paddingTop: "10px", paddingBottom: 
 // The agent's evidence trail: each fact it relies on, what kind of PayPal evidence it is,
 // and which tool returned it, so the seller can check every claim before approving.
 export default function EvidenceGrid({ evidence, toolLabel }: { evidence: Evidence[]; toolLabel: Record<string, string> }) {
+  // On a phone the fact and its source fill the width; the evidence type is left out.
+  const phone = usePhone();
   const cols = useMemo<ColDef<Evidence>[]>(
     () => [
-      { headerName: "Fact", field: "summary", flex: 3, minWidth: 260, autoHeight: true, wrapText: true, cellStyle: WRAP },
+      { headerName: "Fact", field: "summary", flex: 3, minWidth: phone ? 160 : 260, autoHeight: true, wrapText: true, cellStyle: WRAP },
       {
         headerName: "Evidence type",
         field: "type",
         flex: 1.2,
         minWidth: 150,
+        hide: phone,
         valueFormatter: (p) => String(p.value ?? "").replaceAll("_", " ").toLowerCase(),
         cellClass: "text-muted",
         wrapText: true,
@@ -34,13 +38,16 @@ export default function EvidenceGrid({ evidence, toolLabel }: { evidence: Eviden
         headerName: "Source",
         field: "source",
         flex: 1.2,
-        minWidth: 150,
+        minWidth: phone ? 100 : 150,
         valueFormatter: (p) => toolLabel[p.value] ?? p.value,
         cellClass: "text-muted",
+        wrapText: phone,
+        autoHeight: phone,
+        cellStyle: phone ? WRAP : undefined,
         filter: "agTextColumnFilter",
       },
     ],
-    [toolLabel],
+    [toolLabel, phone],
   );
   return (
     <div>

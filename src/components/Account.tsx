@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useCases } from "./CasesProvider";
@@ -30,6 +31,7 @@ export default function Account() {
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/auth/me", { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
       setMe(await res.json());
     } catch {
       setError("Could not load your account.");
@@ -41,13 +43,25 @@ export default function Account() {
 
   if (error) return <p role="alert" className="text-sm text-danger">{error}</p>;
   if (!me) return <p className="text-sm text-muted">Loading…</p>;
-  if (!me.accounts)
-    return (
-      <Card title="Seller accounts are off on this server">
-        <p className="text-sm text-muted">This copy of Rebuttal runs the demo only. Seller accounts need a database (DATABASE_URL) and an encryption key (REBUTTAL_SECRET_KEY); see the README.</p>
-      </Card>
-    );
+  if (!me.accounts) return <AccountsOff />;
   return me.seller ? <SignedIn me={me} reload={load} /> : <SignInForm onDone={load} />;
+}
+
+// Shown when the server has no database: everything else works without an account.
+export function AccountsOff() {
+  return (
+    <div className="mx-auto max-w-xl">
+      <Card title="No sign-in needed for this demo">
+        <p className="text-sm text-muted">
+          Every page works without an account: your browser gets its own private Simulator, and the live PayPal sandbox is one click away in the top bar. Seller accounts, where a shop connects its own PayPal app, are switched off on this server because it has no database attached.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/" className={BUTTON.primary}>Open the disputes inbox</Link>
+          <a href="https://github.com/KRISH-SINGH-10/Rebuttal#seller-accounts-for-real-sellers" className={BUTTON.secondary} target="_blank" rel="noreferrer">How to turn accounts on</a>
+        </div>
+      </Card>
+    </div>
+  );
 }
 
 function SignInForm({ onDone }: { onDone: () => Promise<void> }) {

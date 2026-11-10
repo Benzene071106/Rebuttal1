@@ -20,7 +20,7 @@ describe("plainError", () => {
 });
 
 describe("phone columns", () => {
-  it("hides low-value columns on a phone, fits the rest to the screen, and leaves desktop alone", async () => {
+  it("hides low-value columns on a phone, fits the rest to the screen, and pins the action column on wider screens", async () => {
     const { forPhone } = await import("../src/components/phone");
     const cols = [{ colId: "buyer" }, { colId: "claim" }, { field: "amount" }, { colId: "next" }] as any[];
     const phone = forPhone(cols, true, ["claim"], ["next"]);
@@ -29,6 +29,6 @@ describe("phone columns", () => {
     expect(phone.every((c) => !c.floatingFilter)).toBe(true);
     const desk = forPhone(cols, false, ["claim"], ["next"]);
     expect(desk.find((c) => c.colId === "claim")?.hide).toBe(false);
-    expect(desk.find((c) => c.colId === "next")?.pinned).toBeNull();
+    expect(desk.find((c) => c.colId === "next")?.pinned).toBe("right");
   });
 });

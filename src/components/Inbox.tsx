@@ -22,7 +22,7 @@ type Totals = { count: number; atRisk: number; kept: number; refunded: number };
 // agent's reasoning. It carries the case's own values so it passes the same filters.
 type Row = CaseRecord & { totals?: Totals; detail?: true };
 const isDetail = (n?: IRowNode<Row> | null) => Boolean(n?.data?.detail);
-const COL_STATE_KEY = "rebuttal.inbox.columns.v1";
+const COL_STATE_KEY = "rebuttal.inbox.columns.v2";
 
 const STAGE_LABEL: Record<string, string> = { INQUIRY: "Inquiry", CHARGEBACK: "Chargeback", PRE_ARBITRATION: "Pre-arbitration", ARBITRATION: "Arbitration" };
 const stageOf = (c?: CaseRecord) => (c?.dispute ? STAGE_LABEL[c.dispute.dispute_life_cycle_stage] ?? c.dispute.dispute_life_cycle_stage : undefined);
@@ -469,7 +469,7 @@ export default function Inbox() {
   const phoneCols = useMemo(() => forPhone(cols, phone, ["expand", "claim", "stage", "priority", "agent", "due"], ["next"]), [cols, phone]);
 
 
-  // Keep the seller's column layout (order, widths, sort) between visits.
+  // Keep the seller's column order, widths and sort between visits.
   const saveColumns = useCallback((api: GridApi<Row>) => {
     try {
       localStorage.setItem(COL_STATE_KEY, JSON.stringify(api.getColumnState()));
@@ -478,7 +478,10 @@ export default function Inbox() {
   const restoreColumns = useCallback((api: GridApi<Row>) => {
     try {
       const raw = localStorage.getItem(COL_STATE_KEY);
-      if (raw) api.applyColumnState({ state: JSON.parse(raw) as ColumnState[], applyOrder: true });
+      // Which columns show and which are pinned follow the screen size, so only order,
+      // widths and sort come back. Restoring those too could hide Next step for good.
+      const state = (JSON.parse(raw ?? "[]") as ColumnState[]).map(({ hide: _hide, pinned: _pinned, ...rest }) => rest);
+      if (state.length) api.applyColumnState({ state, applyOrder: true });
     } catch {}
   }, []);
 

@@ -21,7 +21,7 @@ export function usePhone(maxWidth = 640): boolean {
 // screen with no sideways scrolling: columns shrink to a small minimum, the column that
 // was pinned right (the action or verdict) sits at the right edge without pinning, and
 // the first flexible column (usually the buyer) wraps onto two lines instead of being
-// cut off. On wider screens the columns are returned unchanged.
+// cut off. On wider screens every column shows and the action column is pinned right.
 const PHONE_MIN = 84;
 
 export function forPhone<T>(cols: ColDef<T>[], phone: boolean, hide: string[], pinRight: string[] = []): ColDef<T>[] {
@@ -29,7 +29,9 @@ export function forPhone<T>(cols: ColDef<T>[], phone: boolean, hide: string[], p
     return cols.map((c) => {
       const id = c.colId ?? String(c.field ?? "");
       if (hide.includes(id)) return { ...c, hide: false };
-      return pinRight.includes(id) ? { ...c, pinned: null } : c;
+      // Pinned so the action stays on screen when a laptop or tablet is too narrow for
+      // every column, instead of hiding past the grid's right edge.
+      return pinRight.includes(id) ? { ...c, pinned: "right" } : c;
     });
   const visible = (c: ColDef<T>) => !c.hide && !hide.includes(c.colId ?? String(c.field ?? ""));
   const wrapId = cols.find((c) => visible(c) && c.flex && !pinRight.includes(c.colId ?? String(c.field ?? "")));

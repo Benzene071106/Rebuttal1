@@ -1,11 +1,8 @@
 # Render Blueprint: New > Blueprint, pick this repo, then paste the keys when asked.
-# The Postgres database below is created with the app and linked through DATABASE_URL;
-# it holds cases, rules, incidents and seller accounts.
-databases:
-  - name: rebuttal-db
-    plan: free
-    databaseName: rebuttal
-    user: rebuttal
+# Postgres (cases, rules, incidents and seller accounts) is not created here: Render's
+# free databases expire after 30 days, so paste a connection string from any Postgres,
+# for example Neon's free tier, as DATABASE_URL. Leave it empty to run the demo without
+# seller accounts.
 
 services:
   - type: web
@@ -27,9 +24,7 @@ services:
       # Seller accounts: the database, and the key that encrypts sellers' PayPal secrets
       # (Render generates a random one; keep it, or every seller has to reconnect PayPal).
       - key: DATABASE_URL
-        fromDatabase:
-          name: rebuttal-db
-          property: connectionString
+        sync: false
       - key: REBUTTAL_SECRET_KEY
         generateValue: true
       - key: PAYPAL_CLIENT_ID

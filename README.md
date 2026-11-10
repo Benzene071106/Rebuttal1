@@ -226,11 +226,11 @@ The demo above is one shop. With a database, Rebuttal also runs for any number o
 - **Secrets:** PayPal secrets are encrypted with AES-256-GCM under `REBUTTAL_SECRET_KEY` and never sent to the browser.
 - **Durable and safe to scale:** cases, rules and incidents live in Postgres, merged inside the database so a webhook and a click on two server instances don't overwrite each other. Each PayPal webhook event is handled once, and released for PayPal's retry if handling fails.
 
-Turn it on with these environment variables (the Render blueprint sets the first two):
+Turn it on with these environment variables (the Render blueprint generates `REBUTTAL_SECRET_KEY`; you paste `DATABASE_URL`):
 
 | Variable | What it is |
 |---|---|
-| `DATABASE_URL` | Postgres connection string. Tables are created on first start. |
+| `DATABASE_URL` | Postgres connection string, for example from a free [Neon](https://neon.tech) database. Tables are created on first start. |
 | `REBUTTAL_SECRET_KEY` | Encrypts PayPal secrets: `openssl rand -base64 32`. Keep it; changing it means sellers reconnect PayPal. |
 | `APP_URL` | Public https address for webhooks (falls back to Render's `RENDER_EXTERNAL_URL`). |
 
@@ -238,7 +238,7 @@ Without them the app runs exactly as the hackathon demo, with no sign-in. `/api/
 
 ## Deploy
 
-`render.yaml` is a Render Blueprint for a free web service: `npm ci && npm run build`, `npm start` (binds to `$PORT`), health check `/api/health`, starting on the simulator (`PAYPAL_MODE=mock`). In Render choose **New > Blueprint**, pick this repository and paste `GEMINI_API_KEY`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` when asked. Without the PayPal keys the app runs on the simulator only. The blueprint also creates a Postgres database and an encryption key, which turn on seller accounts.
+`render.yaml` is a Render Blueprint for a free web service: `npm ci && npm run build`, `npm start` (binds to `$PORT`), health check `/api/health`, starting on the simulator (`PAYPAL_MODE=mock`). In Render choose **New > Blueprint**, pick this repository and paste `GEMINI_API_KEY`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` when asked. Without the PayPal keys the app runs on the simulator only. The blueprint also generates the encryption key (`REBUTTAL_SECRET_KEY`). For seller accounts, add `DATABASE_URL` in the service's **Environment** tab. The blueprint doesn't create a Render database, because Render's free Postgres expires after 30 days. A free [Neon](https://neon.tech) database doesn't expire: copy its connection string (it ends in `?sslmode=require`, which turns on TLS) and paste it as `DATABASE_URL`. Tables are created on first start, and `/api/health` then reports the database as reachable.
 
 ## Tests
 

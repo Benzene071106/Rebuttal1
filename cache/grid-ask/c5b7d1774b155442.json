@@ -1,0 +1,24 @@
+{
+  "key": "c5b7d1774b155442",
+  "grid": "disputes",
+  "question": "unauthorized claims over $100",
+  "saved_at": "2026-11-10T16:35:04.126Z",
+  "model": "gemini:gemini-3.5-flash-lite",
+  "view": {
+    "filterModel": {
+      "claim": {
+        "filterType": "text",
+        "type": "equals",
+        "filter": "Unauthorized"
+      },
+      "amount": {
+        "filterType": "number",
+        "type": "greaterThan",
+        "filter": 100
+      }
+    },
+    "sort": [],
+    "rowGroup": [],
+    "explanation": "Showing unauthorized claims with an amount greater than $100."
+  }
+}

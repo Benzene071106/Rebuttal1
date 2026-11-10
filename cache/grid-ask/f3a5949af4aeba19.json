@@ -1,0 +1,19 @@
+{
+  "key": "f3a5949af4aeba19",
+  "grid": "disputes",
+  "question": "not investigated yet",
+  "saved_at": "2026-11-10T16:35:05.253Z",
+  "model": "gemini:gemini-3.5-flash-lite",
+  "view": {
+    "filterModel": {
+      "status": {
+        "filterType": "text",
+        "type": "equals",
+        "filter": "Not analyzed"
+      }
+    },
+    "sort": [],
+    "rowGroup": [],
+    "explanation": "Showing disputes that have not been analyzed yet."
+  }
+}

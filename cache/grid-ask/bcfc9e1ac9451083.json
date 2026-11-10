@@ -1,0 +1,29 @@
+{
+  "key": "bcfc9e1ac9451083",
+  "grid": "disputes",
+  "question": "urgent chargebacks first",
+  "saved_at": "2026-11-10T16:35:03.166Z",
+  "model": "gemini:gemini-3.5-flash-lite",
+  "view": {
+    "filterModel": {
+      "stage": {
+        "filterType": "text",
+        "type": "equals",
+        "filter": "Chargeback"
+      },
+      "priority": {
+        "filterType": "text",
+        "type": "equals",
+        "filter": "Urgent"
+      }
+    },
+    "sort": [
+      {
+        "colId": "due",
+        "sort": "asc"
+      }
+    ],
+    "rowGroup": [],
+    "explanation": "Showing urgent chargebacks sorted by urgency."
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "key": "eff272e9fb61484f",
+  "grid": "outcomes",
+  "question": "biggest wins first",
+  "saved_at": "2026-11-10T16:35:14.413Z",
+  "model": "gemini:gemini-3.5-flash-lite",
+  "view": {
+    "filterModel": {
+      "result": {
+        "filterType": "text",
+        "type": "equals",
+        "filter": "WON"
+      }
+    },
+    "sort": [
+      {
+        "colId": "amount",
+        "sort": "desc"
+      }
+    ],
+    "rowGroup": [],
+    "explanation": "Showing all disputes sorted by amount with the biggest wins first."
+  }
+}

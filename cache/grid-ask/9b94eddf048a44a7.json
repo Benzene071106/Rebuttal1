@@ -1,0 +1,19 @@
+{
+  "key": "9b94eddf048a44a7",
+  "grid": "outcomes",
+  "question": "disputes we lost",
+  "saved_at": "2026-11-10T16:35:06.886Z",
+  "model": "gemini:gemini-3.5-flash-lite",
+  "view": {
+    "filterModel": {
+      "result": {
+        "filterType": "text",
+        "type": "equals",
+        "filter": "LOST"
+      }
+    },
+    "sort": [],
+    "rowGroup": [],
+    "explanation": "Showing all disputes that resulted in a loss."
+  }
+}

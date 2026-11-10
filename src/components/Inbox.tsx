@@ -159,7 +159,8 @@ function DetailRow({ data }: ICellRendererParams<Row>) {
       ) : (
         <p className="self-center text-muted">{data.status === "ANALYZING" ? "The agent is investigating this dispute now." : "Not investigated yet. Open the dispute and the agent starts right away."}</p>
       )}
-      <Link href={`/cases/${data.id}`} className="shrink-0 self-center rounded-md border border-line px-3 py-1.5 text-sm hover:border-accent">
+      {/* This row's id is "<dispute id>:detail"; link to the dispute itself. */}
+      <Link href={`/cases/${data.id.replace(/:detail$/, "")}`} className="shrink-0 self-center rounded-md border border-line px-3 py-1.5 text-sm hover:border-accent">
         Open dispute
       </Link>
     </div>

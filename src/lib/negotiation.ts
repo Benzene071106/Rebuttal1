@@ -4,6 +4,7 @@
 // ceiling, never backwards, never more than the buyer asked for.
 
 import { currentShop, describeShop, type Shop } from "./shop";
+import { asActor } from "./trail";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -60,7 +61,14 @@ const running = new Set<string>();
 // Starts a negotiation (maxRefund required) or continues one when the buyer has
 // answered. Returns when the deal settles, is handed back, or the buyer hasn't answered
 // yet (a webhook continues it then).
-export async function negotiate(caseId: string, opts: { maxRefund?: number; onTurn?: (t: NegotiationTurn) => void; model?: AgentModel; waitMs?: number } = {}): Promise<CaseRecord> {
+type NegotiateOptions = { maxRefund?: number; onTurn?: (t: NegotiationTurn) => void; model?: AgentModel; waitMs?: number };
+
+// Offers and messages the negotiator sends go on the API trail as the agent's.
+export function negotiate(caseId: string, opts: NegotiateOptions = {}): Promise<CaseRecord> {
+  return asActor("agent", () => runNegotiation(caseId, opts), caseId);
+}
+
+async function runNegotiation(caseId: string, opts: NegotiateOptions): Promise<CaseRecord> {
   let c = await getCase(caseId);
   if (!c) throw new Error(`Unknown case ${caseId}`);
   const r = c.recommendation;

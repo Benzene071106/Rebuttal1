@@ -30,6 +30,9 @@ export interface PayPalGateway {
   // answer in the dispute conversation (the simulator's buyer then haggles).
   makeOffer(id: string, offer: { amount: string; currency: string; type: "REFUND" | "REFUND_WITH_RETURN"; note: string; negotiating?: boolean }): Promise<PayPalReceipt>;
   acceptClaim(id: string, note: string): Promise<PayPalReceipt>;
+  // Refunds a captured payment (Payments v2), for a paid order the seller decides not to
+  // ship. Without `amount` PayPal refunds the whole capture.
+  refundCapture(captureId: string, amount?: { value: string; currency_code: string }): Promise<PayPalReceipt>;
   // Posts a message to the buyer in the dispute conversation.
   sendMessage(id: string, message: string): Promise<void>;
   // Makes sure PayPal has the carrier tracking on the disputed transaction before we

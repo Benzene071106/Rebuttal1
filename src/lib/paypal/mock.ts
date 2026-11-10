@@ -9,6 +9,7 @@ import type { Dispute, PayPalReceipt } from "../types";
 import type { EvidenceSubmission, PayPalGateway } from "./gateway";
 import { sharedToolDefs } from "./toolkit";
 import { lruGet, visitor } from "../visitor";
+import { fakeDebugId, toolEndpoint, traced } from "../trail";
 
 type MockRow = {
   scenario: Scenario;
@@ -23,7 +24,7 @@ type MockRow = {
   pendingReply?: { due: number; apply: () => void };
 };
 
-type MockState = { rows: Map<string, MockRow>; nextSeq: number; filed: Set<string>; fault?: { kind: FaultKind; left: number } };
+type MockState = { rows: Map<string, MockRow>; nextSeq: number; filed: Set<string>; refunded: Set<string>; fault?: { kind: FaultKind; left: number } };
 
 // Faults the simulator can inject into its next PayPal write call, to show the agent
 // recovering. Each throws the same error text the live sandbox gateway throws.
@@ -44,20 +45,20 @@ export function armedFault(): FaultKind | null {
 }
 
 // Called at the start of each write. Throws while the armed fault has calls left.
-function maybeFail(op: "accept-claim" | "make-offer" | "provide-evidence", id: string) {
+function maybeFail(op: "accept-claim" | "make-offer" | "provide-evidence" | "refund", id: string) {
   const st = state();
   const f = st.fault;
   if (!f) return;
   // Insufficient funds only applies to refunds; another write goes through and uses up
   // the fault, so "break the next call" never lingers onto a later refund.
-  if (f.kind === "INSUFFICIENT_FUNDS" && op !== "accept-claim") {
+  if (f.kind === "INSUFFICIENT_FUNDS" && op !== "accept-claim" && op !== "refund") {
     st.fault = undefined;
     return;
   }
   if (--f.left <= 0) st.fault = undefined;
   // Stable per dispute and fault, like a real debug_id for one failing request.
   const debug = crypto.createHash("sha256").update(`${f.kind}:${op}:${id}:${f.left}`).digest("hex").slice(0, 13);
-  const url = `/v1/customer/disputes/${id}/${op}`;
+  const url = op === "refund" ? `/v2/payments/captures/${id}/refund` : `/v1/customer/disputes/${id}/${op}`;
   if (f.kind === "OUTAGE") throw new Error(`PayPal POST ${url} failed (503): {"name":"SERVICE_UNAVAILABLE","message":"Service Unavailable.","debug_id":"${debug}"}`);
   if (f.kind === "TOKEN_EXPIRED") throw new Error(`PayPal POST ${url} failed (401): {"error":"invalid_token","error_description":"Access Token not found in cache","debug_id":"${debug}"}`);
   throw new Error(`PayPal refused the refund: the seller's PayPal balance is too low to cover it (INSUFFICIENT_FUNDS). PayPal POST ${url} failed (422): {"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"INSUFFICIENT_FUNDS","description":"Sender does not have sufficient funds. Please add funds and retry."}],"debug_id":"${debug}"}`);
@@ -188,7 +189,7 @@ const PENDING = PENDING_ORDERS.map(pendingOrder);
 function state(): MockState {
   g.__rebuttalMock ??= new Map();
   return lruGet(g.__rebuttalMock, visitor().id, () => {
-    const st: MockState = { rows: new Map(), nextSeq: 0, filed: new Set() };
+    const st: MockState = { rows: new Map(), nextSeq: 0, filed: new Set(), refunded: new Set() };
     // Start with three disputes in the inbox; the fourth (a $28 print) arrives live in the
     // demo through the simulated webhook, small enough for autopilot to refund on its own.
     for (const s of SCENARIOS.slice(0, 3)) addScenario(st, s);
@@ -266,7 +267,7 @@ function simReceipt(id: string, action: string): PayPalReceipt {
   return { method: "POST", endpoint: `/v1/customer/disputes/${id}/${action}`, via: "simulator", http_status: 200, at: new Date().toISOString() };
 }
 
-export const mockGateway: PayPalGateway = {
+const simulator: PayPalGateway = {
   mode: "mock",
 
   agentTools: sharedToolDefs,
@@ -388,6 +389,18 @@ export const mockGateway: PayPalGateway = {
     return simReceipt(id, "accept-claim");
   },
 
+  async refundCapture(captureId, amount) {
+    maybeFail("refund", captureId);
+    const st = state();
+    const pending = PENDING.find((o) => o.purchase_units[0].payments.captures[0].id === captureId);
+    const disputed = [...st.rows.values()].find((x) => x.captureId === captureId);
+    if (!pending && !disputed) throw new Error(`PayPal POST /v2/payments/captures/${captureId}/refund failed (404): {"name":"RESOURCE_NOT_FOUND","message":"The specified resource does not exist."}`);
+    if (st.refunded.has(captureId)) throw new Error(`PayPal POST /v2/payments/captures/${captureId}/refund failed (422): {"name":"UNPROCESSABLE_ENTITY","details":[{"issue":"CAPTURE_FULLY_REFUNDED","description":"The capture has already been fully refunded."}]}`);
+    st.refunded.add(captureId);
+    void amount;
+    return { method: "POST", endpoint: `/v2/payments/captures/${captureId}/refund`, via: "simulator", http_status: 201, debug_id: fakeDebugId("POST", `/v2/payments/captures/${captureId}/refund`), status_after: "COMPLETED", at: new Date().toISOString() };
+  },
+
   async addTracking(transactionId, t) {
     const r = [...state().rows.values()].find((x) => x.captureId === transactionId);
     if (!r) throw new Error("RESOURCE_NOT_FOUND: transaction");
@@ -445,3 +458,23 @@ export const mockGateway: PayPalGateway = {
   },
 };
 
+
+// Every simulated PayPal call goes on the API trail with the endpoint the live sandbox
+// would call, including the failures maybeFail injects (503 / 401 / 422).
+const disputePath = (id: string, action?: string) => `/v1/customer/disputes/${id}${action ? `/${action}` : ""}`;
+const sim = { via: "simulator" as const };
+
+export const mockGateway: PayPalGateway = {
+  ...simulator,
+  runTool: (name, input) => traced({ ...toolEndpoint(name, input), ...sim }, () => simulator.runTool(name, input)),
+  listDisputes: () => traced({ method: "GET", endpoint: "/v1/customer/disputes", ...sim }, () => simulator.listDisputes()),
+  getDispute: (id) => traced({ method: "GET", endpoint: disputePath(id), ...sim }, () => simulator.getDispute(id)),
+  provideEvidence: (id, ev) => traced({ method: "POST", endpoint: disputePath(id, "provide-evidence"), ...sim }, () => simulator.provideEvidence(id, ev)),
+  makeOffer: (id, offer) => traced({ method: "POST", endpoint: disputePath(id, "make-offer"), ...sim }, () => simulator.makeOffer(id, offer)),
+  acceptClaim: (id, note) => traced({ method: "POST", endpoint: disputePath(id, "accept-claim"), ...sim }, () => simulator.acceptClaim(id, note)),
+  sendMessage: (id, message) => traced({ method: "POST", endpoint: disputePath(id, "send-message"), ...sim }, () => simulator.sendMessage(id, message)),
+  simulateRuling: (id, outcome) => traced({ method: "POST", endpoint: disputePath(id, "adjudicate"), ...sim }, () => simulator.simulateRuling(id, outcome)),
+  addTracking: (txn, t, orderId) => traced({ method: "POST", endpoint: "/v1/shipping/trackers-batch", ...sim }, () => simulator.addTracking(txn, t, orderId)),
+  refundCapture: (captureId, amount) =>
+    traced({ method: "POST", endpoint: `/v2/payments/captures/${captureId}/refund`, ...sim, status: (r) => r.http_status ?? 200 }, () => simulator.refundCapture(captureId, amount)),
+};

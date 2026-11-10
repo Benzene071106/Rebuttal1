@@ -10,6 +10,7 @@ import { paypal } from "./paypal";
 import type { ToolDef } from "./paypal/gateway";
 import { getStoreRecords, STORE_RECORDS_TOOL } from "./store-records";
 import type { Dispute, Recommendation, TraceStep } from "./types";
+import { asActor } from "./trail";
 
 const MAX_TURNS = 14;
 
@@ -118,7 +119,12 @@ export type AnalyzeOptions = {
   onStep?: (step: TraceStep) => void;
 };
 
-export async function analyzeDispute(dispute: Dispute, opts: AnalyzeOptions = {}): Promise<{ recommendation: Recommendation; trace: TraceStep[]; model: string }> {
+// The agent's PayPal reads go on the API trail as the agent's, against this dispute.
+export function analyzeDispute(dispute: Dispute, opts: AnalyzeOptions = {}): Promise<{ recommendation: Recommendation; trace: TraceStep[]; model: string }> {
+  return asActor("agent", () => investigateDispute(dispute, opts), dispute.dispute_id);
+}
+
+async function investigateDispute(dispute: Dispute, opts: AnalyzeOptions): Promise<{ recommendation: Recommendation; trace: TraceStep[]; model: string }> {
   const model = opts.model ?? defaultModel();
   const gw = paypal();
   const trace: TraceStep[] = [];

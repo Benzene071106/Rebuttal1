@@ -11,6 +11,7 @@ import { cachedDisputeList, type ListItem } from "./dispute-list-cache";
 import type { EvidenceSubmission, PayPalGateway } from "./gateway";
 import { evidencePdf } from "./evidence-pdf";
 import { makeToolkit, toolkitDefs, type PayPalEnv } from "./toolkit";
+import { recordCall, toolEndpoint, traced, type TrailMethod } from "../trail";
 
 const ORDER_MAP = path.join(process.cwd(), "data", "sandbox-orders.json");
 
@@ -20,31 +21,46 @@ export function sandboxGateway(clientId: string, clientSecret: string, opts: { e
   const env = opts.env ?? "sandbox";
   const tk = makeToolkit(clientId, clientSecret, env);
   const defs = toolkitDefs(tk);
+  traceTokenCalls(tk);
 
   async function call(method: string, urlPath: string, body?: unknown | FormData) {
     return (await callWithReceipt(method, urlPath, body)).json;
   }
 
   // Same call, plus what PayPal answered (status and PayPal-Debug-Id), kept as the
-  // seller's proof that a write landed.
+  // seller's proof that a write landed. Every call, failed or not, goes on the API trail.
   async function callWithReceipt(method: string, urlPath: string, body?: unknown | FormData): Promise<{ json: any; receipt: PayPalReceipt }> {
+    const system = /^\/v1\/notifications\//.test(urlPath);
+    const trail = (status: number, debug: string | null) => recordCall({ method: method as TrailMethod, endpoint: urlPath, status, debug_id: debug, via: "rest", ...(system ? { by: "system" as const } : {}) });
     const headers = await tk.client.getHeaders();
     const isForm = body instanceof FormData;
     if (isForm) delete headers["Content-Type"];
-    const res = await fetch(`${tk.client.getBaseUrl()}${urlPath}`, {
-      method,
-      headers: isForm ? headers : { ...headers, "Content-Type": "application/json" },
-      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${tk.client.getBaseUrl()}${urlPath}`, {
+        method,
+        headers: isForm ? headers : { ...headers, "Content-Type": "application/json" },
+        body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
+      });
+    } catch (e) {
+      trail(0, null);
+      throw e;
+    }
     const text = await res.text();
+    const debugId = res.headers.get("paypal-debug-id");
+    trail(res.status, debugId);
     if (!res.ok) throw new Error(`PayPal ${method} ${urlPath} failed (${res.status}): ${text.slice(0, 500)}`);
-    const receipt: PayPalReceipt = { method: "POST", endpoint: urlPath, via: "rest", http_status: res.status, debug_id: res.headers.get("paypal-debug-id") ?? undefined, at: new Date().toISOString() };
+    const receipt: PayPalReceipt = { method: "POST", endpoint: urlPath, via: "rest", http_status: res.status, debug_id: debugId ?? undefined, at: new Date().toISOString() };
     return { json: text ? JSON.parse(text) : {}, receipt };
   }
 
   // Runs one Agent Toolkit tool. The toolkit reports PayPal errors as an `error` object
   // in its result rather than throwing, so turn those back into exceptions.
   async function toolkit(name: string, input: Record<string, unknown>): Promise<any> {
+    return traced({ ...toolEndpoint(name, input), via: "agent_toolkit" }, () => runToolkit(name, input));
+  }
+
+  async function runToolkit(name: string, input: Record<string, unknown>): Promise<any> {
     const msg = await tk.handleToolCall({ id: `call_${Date.now()}`, type: "function", function: { name, arguments: JSON.stringify(input) } });
     const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
     let out: any = content;
@@ -197,6 +213,11 @@ export function sandboxGateway(clientId: string, clientSecret: string, opts: { e
       }
     },
 
+    async refundCapture(captureId, amount) {
+      const body = amount ? { amount: { value: amount.value, currency_code: amount.currency_code } } : {};
+      return (await callWithReceipt("POST", `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`, body)).receipt;
+    },
+
     async addTracking(transactionId, t, orderId) {
       const existing = await toolkit("get_shipment_tracking", { transaction_id: transactionId }).catch(() => null);
       const trackers: Array<{ tracking_number?: string }> = existing?.trackers ?? [];
@@ -240,4 +261,13 @@ export function sandboxGateway(clientId: string, clientSecret: string, opts: { e
       throw new Error("In sandbox mode, file test disputes from the sandbox buyer account (see README, 'Seeding the sandbox').");
     },
   };
+}
+
+// The toolkit signs in with its own HTTP client; record each access-token request on the
+// trail too, as the server's own call.
+function traceTokenCalls(tk: ReturnType<typeof makeToolkit>) {
+  const client = (tk as unknown as { client?: { getAccessToken?: () => Promise<string> } }).client;
+  const original = client?.getAccessToken?.bind(client);
+  if (!client || !original) return;
+  client.getAccessToken = () => traced({ method: "POST", endpoint: "/v1/oauth2/token", via: "rest", by: "system", case_id: null }, original);
 }

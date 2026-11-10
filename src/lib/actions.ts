@@ -5,6 +5,7 @@ import { withCaseLock } from "./locks";
 import { paypal } from "./paypal";
 import { withRecovery } from "./recovery";
 import { runAs, visitor } from "./visitor";
+import { asActor } from "./trail";
 import type { CaseRecord, Decision, Dispute, EvidenceType, PayPalReceipt } from "./types";
 
 export type Approval = {
@@ -25,7 +26,8 @@ export const SIM_AUTO_RULING_MS = 8_000;
 export function approve(caseId: string, a: Approval): Promise<CaseRecord> {
   // The lock is taken before the first await, so a second approve for the same
   // dispute is refused instead of reaching PayPal while the first is in flight.
-  return withCaseLock(caseId, "Sending the response", () => send(caseId, a));
+  // Calls go on the API trail as the seller's, or autopilot's when it acted on its own.
+  return withCaseLock(caseId, "Sending the response", () => asActor(a.by ?? "seller", () => send(caseId, a), caseId));
 }
 
 async function send(caseId: string, a: Approval): Promise<CaseRecord> {
@@ -105,7 +107,11 @@ function scheduleSimRuling(caseId: string) {
 
 // Sandbox only: ask PayPal to rule on the dispute so the full lifecycle can be shown.
 // A ruling happens once, on a fight or an offer that is still waiting.
-export async function simulateRuling(caseId: string, outcome: "SELLER_FAVOR" | "BUYER_FAVOR"): Promise<CaseRecord> {
+export function simulateRuling(caseId: string, outcome: "SELLER_FAVOR" | "BUYER_FAVOR"): Promise<CaseRecord> {
+  return asActor("system", () => rule(caseId, outcome), caseId);
+}
+
+async function rule(caseId: string, outcome: "SELLER_FAVOR" | "BUYER_FAVOR"): Promise<CaseRecord> {
   const c = await getCase(caseId);
   if (!c?.submitted) throw new Error("Send a response before simulating PayPal's ruling.");
   if (c.outcome) throw new Error("This dispute is already closed, so there is nothing left for PayPal to rule on.");

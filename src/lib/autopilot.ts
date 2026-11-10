@@ -12,6 +12,7 @@ import { paypal } from "./paypal";
 import { RecoveryPausedError } from "./recovery";
 import { evaluateRules, getRules } from "./rules";
 import type { CaseRecord, Dispute } from "./types";
+import { asActor } from "./trail";
 
 export type DisputeEvent = { id?: string; event_type: string; resource?: { dispute_id?: string } & Partial<Dispute> };
 
@@ -45,7 +46,13 @@ export async function ingestDisputeEvent(event: DisputeEvent): Promise<{ case: C
 
 // Investigates a dispute and applies the seller's rules. Never throws: every result,
 // including a failure, ends up as an alert on the case.
-export async function runAutopilot(id: string): Promise<CaseRecord | undefined> {
+// PayPal calls autopilot makes go on the API trail as autopilot's (its investigation is
+// still the agent's).
+export function runAutopilot(id: string): Promise<CaseRecord | undefined> {
+  return asActor("autopilot", () => autopilot(id), id);
+}
+
+async function autopilot(id: string): Promise<CaseRecord | undefined> {
   const at = () => new Date().toISOString();
   try {
     await runAnalysis(id);

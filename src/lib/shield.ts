@@ -19,6 +19,7 @@ import type { ToolDef } from "./paypal/gateway";
 import { getStoreRecords } from "./store-records";
 import type { TraceStep } from "./types";
 import { lruGet, visitor } from "./visitor";
+import { asActor } from "./trail";
 
 export type RiskSignal = { finding: string; effect: "RAISES" | "LOWERS"; source: string; weight?: number };
 export type RiskVerdict = { risk: "LOW" | "MEDIUM" | "HIGH"; score: number; headline: string; signals: RiskSignal[]; actions: string[] };
@@ -221,10 +222,14 @@ export async function getBuyerHistory(email: string) {
   };
 }
 
-export async function assessOrder(
-  orderId: string,
-  opts: { model?: AgentModel; onStep?: (s: TraceStep) => void; rule?: RuleCheck } = {},
-): Promise<{ verdict: RiskVerdict; trace: TraceStep[]; model: string }> {
+type AssessOptions = { model?: AgentModel; onStep?: (s: TraceStep) => void; rule?: RuleCheck };
+
+// The agent's order reads go on the API trail as the agent's.
+export function assessOrder(orderId: string, opts: AssessOptions = {}): Promise<{ verdict: RiskVerdict; trace: TraceStep[]; model: string }> {
+  return asActor("agent", () => checkOrder(orderId, opts), null);
+}
+
+async function checkOrder(orderId: string, opts: AssessOptions): Promise<{ verdict: RiskVerdict; trace: TraceStep[]; model: string }> {
   const model = opts.model ?? defaultModel();
   const gw = paypal();
   const rule = opts.rule ?? (await ruleFor(orderId));

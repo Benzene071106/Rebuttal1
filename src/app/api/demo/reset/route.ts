@@ -4,6 +4,7 @@ import { resetMock } from "@/lib/paypal/mock";
 import { resetIncidents } from "@/lib/recovery";
 import { resetRules } from "@/lib/rules";
 import { resetShield } from "@/lib/shield";
+import { resetTrail } from "@/lib/trail";
 import { withVisitor } from "@/lib/visitor";
 
 // Resets this visitor's simulator only; other visitors keep theirs.
@@ -14,5 +15,6 @@ export const POST = withVisitor(async () => {
   resetShield();
   await resetIncidents();
   await resetRules();
+  resetTrail();
   return Response.json({ ok: true });
 });

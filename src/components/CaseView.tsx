@@ -7,6 +7,8 @@ import EvidenceGrid from "./EvidenceGrid";
 import NegotiationPanel from "./NegotiationPanel";
 import NetworkBanner from "./NetworkBanner";
 import WhyPanel from "./WhyPanel";
+import { useCases } from "./CasesProvider";
+import { BUTTON } from "./ui";
 import { daysLeft, DECISION_COLOR, DECISION_LABEL, money, REASON_LABEL, statusLabel } from "./format";
 
 const TOOL_LABEL: Record<string, string> = {
@@ -36,6 +38,8 @@ export default function CaseView({ id }: { id: string }) {
   const sentPanel = useRef<HTMLDivElement>(null);
   const banner = useRef<HTMLDivElement>(null);
   const wasAwaiting = useRef(false);
+  const [missing, setMissing] = useState(false);
+  const [lookup, setLookup] = useState(0);
 
   const adopt = useCallback((rec: CaseRecord) => {
     setC(rec);
@@ -88,7 +92,8 @@ export default function CaseView({ id }: { id: string }) {
         if (res?.ok) rec = await res.json();
       }
       if (cancelled) return;
-      if (!rec) return setError("Dispute not found.");
+      if (!rec) return setMissing(true);
+      setMissing(false);
       setError(null);
       adopt(rec);
       if (rec.status === "NEW" && !started.current) {
@@ -99,7 +104,7 @@ export default function CaseView({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, adopt, analyze]);
+  }, [id, adopt, analyze, lookup]);
 
   // Hands the partial refund to the agent, which haggles with the buyer up to the
   // ceiling; the conversation streams in as it happens.
@@ -200,6 +205,7 @@ export default function CaseView({ id }: { id: string }) {
     return () => clearTimeout(t);
   }, [countdown, busy]);
 
+  if (!c && missing) return <MissingDispute id={id} onRetry={() => { setMissing(false); setLookup((n) => n + 1); }} />;
   if (!c) return <p className="text-muted">{error ?? "Loading..."}</p>;
 
   const d = c.dispute;
@@ -514,6 +520,34 @@ function PayPalReceiptCard({ id, r }: { id: string; r: PayPalReceipt }) {
           (sign in as the sandbox seller, open dispute {id}).
         </p>
       )}
+    </div>
+  );
+}
+
+// A dispute link that doesn't open: an old or shared link, the other mode, or a demo server
+// that restarted and re-seeded. Say why and give a way out instead of a bare error.
+function MissingDispute({ id, onRetry }: { id: string; onRetry: () => void }) {
+  const { data, switchMode } = useCases();
+  const other = data?.mode === "sandbox" ? "mock" : data?.sandboxAvailable ? "sandbox" : null;
+  return (
+    <div className="space-y-4">
+      <Link href="/" className="text-sm text-muted hover:text-ink">&larr; All disputes</Link>
+      <section className="rounded-lg border border-line bg-panel p-4 sm:p-6">
+        <h1 className="text-lg font-semibold">Dispute {id} isn&apos;t in this inbox</h1>
+        <p className="mt-2 max-w-prose text-sm text-muted">
+          {data?.mode === "sandbox" ? "You're looking at the live PayPal sandbox." : "You're in the Simulator, which is a private copy of the shop for each browser."}{" "}
+          A link copied from someone else&apos;s Simulator, a dispute from the other mode, or a demo server that has just restarted all land here. Your own disputes are one click away.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/" className={BUTTON.primary}>Open all disputes</Link>
+          {other ? (
+            <button className={BUTTON.secondary} onClick={async () => { await switchMode(other); onRetry(); }}>
+              Look in the {other === "sandbox" ? "live PayPal sandbox" : "Simulator"}
+            </button>
+          ) : null}
+          <button className={BUTTON.ghost} onClick={onRetry}>Try again</button>
+        </div>
+      </section>
     </div>
   );
 }

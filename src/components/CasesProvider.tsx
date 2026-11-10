@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, useSyncExternalStore } from "react";
 import type { AutopilotRules, CaseRecord } from "@/lib/types";
 
 export type Stats = {
@@ -78,8 +78,16 @@ export default function CasesProvider({ children }: { children: React.ReactNode 
   return <CasesContext.Provider value={{ data, error, setError, reload, rules, setRules, switchMode }}>{children}</CasesContext.Provider>;
 }
 
+const noSubscribe = () => () => {};
+
 export function useCases(): Ctx {
   const ctx = useContext(CasesContext);
   if (!ctx) throw new Error("useCases must be used inside CasesProvider");
-  return ctx;
+  // The server always renders with no data yet. Parts of the page that stream in late (the
+  // top bar, each page body) can hydrate after the first poll has already answered, so
+  // while a component is hydrating it must still see "no data", or React finds HTML that
+  // doesn't match (minified error #418). This is false only during hydration; mounts after
+  // that see the data straight away.
+  const hydrated = useSyncExternalStore(noSubscribe, () => true, () => false);
+  return hydrated ? ctx : { ...ctx, data: null, error: null, rules: null };
 }

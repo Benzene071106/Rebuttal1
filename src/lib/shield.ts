@@ -17,12 +17,15 @@ import type { ChatEntry, ToolResult } from "./model/types";
 import { paypal } from "./paypal";
 import type { ToolDef } from "./paypal/gateway";
 import { getStoreRecords } from "./store-records";
-import type { TraceStep } from "./types";
+import type { PayPalReceipt, TraceStep } from "./types";
 import { lruGet, visitor } from "./visitor";
 import { asActor } from "./trail";
 
 export type RiskSignal = { finding: string; effect: "RAISES" | "LOWERS"; source: string; weight?: number };
 export type RiskVerdict = { risk: "LOW" | "MEDIUM" | "HIGH"; score: number; headline: string; signals: RiskSignal[]; actions: string[] };
+// What the seller chose to do before shipping (see preship.ts). One per order.
+export type OrderDecision = { action: "REFUND" | "SIGNATURE" | "PAYPAL_ADDRESS"; at: string; receipt: PayPalReceipt | null };
+
 export type ShieldCheck = {
   order_id: string;
   invoice_id: string;
@@ -33,6 +36,7 @@ export type ShieldCheck = {
   error?: string;
   // Set when the AI couldn't explain the check and the seller sees the rule-based one.
   notice?: string;
+  decision?: OrderDecision;
   at: string;
 };
 
@@ -320,7 +324,8 @@ export function resetShield() {
   g.__rebuttalShield?.delete(`${visitor().mode}:${visitor().id}`);
 }
 
-export type ShieldRow = ShieldCheck & { buyer: string; item: string; amount: string; ship_to: string };
+// to_review: flagged MEDIUM or HIGH and the seller hasn't acted on it yet.
+export type ShieldRow = ShieldCheck & { buyer: string; item: string; amount: string; ship_to: string; to_review: boolean };
 
 export async function listShield(): Promise<ShieldRow[]> {
   const gw = paypal();
@@ -330,8 +335,10 @@ export async function listShield(): Promise<ShieldRow[]> {
       const order = (await gw.runTool("get_order", { id: o.order_id })) as any;
       const pu = order.purchase_units?.[0];
       const a = pu?.shipping?.address;
+      const check: ShieldCheck = s.get(o.order_id) ?? { ...o, status: "CHECKING" as const, trace: [], at: new Date().toISOString() };
       return {
-        ...(s.get(o.order_id) ?? { ...o, status: "CHECKING" as const, trace: [], at: new Date().toISOString() }),
+        ...check,
+        to_review: Boolean(check.verdict && check.verdict.risk !== "LOW" && !check.decision),
         buyer: [order.payer?.name?.given_name, order.payer?.name?.surname].filter(Boolean).join(" "),
         item: pu?.items?.[0]?.name ?? "",
         amount: pu?.amount?.value ?? "0",
@@ -359,7 +366,8 @@ export async function runShield(orderId: string, opts: { fresh?: boolean; model?
   const s = store();
   const meta = (await paypal().ordersAwaitingShipment()).find((o) => o.order_id === orderId);
   if (!meta) throw new Error(`No order ${orderId} awaiting shipment.`);
-  const base: ShieldCheck = { ...meta, status: "CHECKING", trace: [], at: new Date().toISOString() };
+  const decision = s.get(orderId)?.decision;
+  const base: ShieldCheck = { ...meta, status: "CHECKING", trace: [], at: new Date().toISOString(), ...(decision ? { decision } : {}) };
   s.set(orderId, base);
   const onStep = (st: TraceStep) => s.set(orderId, { ...s.get(orderId)!, trace: [...(s.get(orderId)?.trace ?? []), st] });
   try {
@@ -395,6 +403,15 @@ export async function runShield(orderId: string, opts: { fresh?: boolean; model?
   } catch (e) {
     return done(orderId, { status: "ERROR", error: e instanceof Error ? e.message : String(e) });
   }
+}
+
+export function shieldDecision(orderId: string): OrderDecision | undefined {
+  return store().get(orderId)?.decision;
+}
+
+export function saveDecision(meta: { order_id: string; invoice_id: string }, decision: OrderDecision) {
+  const s = store();
+  s.set(meta.order_id, { ...(s.get(meta.order_id) ?? { ...meta, status: "CHECKING" as const, trace: [], at: new Date().toISOString() }), decision });
 }
 
 function done(orderId: string, patch: Partial<ShieldCheck>): ShieldCheck {

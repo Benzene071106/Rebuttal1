@@ -2,6 +2,54 @@
 
 **An AI agent that defends small online sellers in PayPal disputes.**
 
+**[Live demo](https://rebuttal-6j9a.onrender.com)** (no login) · **[Demo video](https://youtu.be/GnCHcMgndKA)** (under 3 min) · Built for [Build What's Next with PayPal and AI](https://paypalaihackathon.devpost.com/)
+
+_The demo runs on Render's free tier: if nobody has used it for a while, the first load can take up to a minute._
+
+## In 30 seconds
+
+- **Who it's for:** small sellers paid through PayPal with nobody to defend them, like freelancers and craft exporters selling abroad.
+- **The problem:** a dispute gives them days to answer. Most refund out of fear or send a reply that leaves out the evidence that would have won.
+- **What it does:** when PayPal's dispute webhook arrives, a Gemini agent investigates through the PayPal Agent Toolkit and recommends fight, partial refund or refund, with every fact traced to its source. The seller approves, and the server answers through the PayPal Disputes API.
+- **Before and after the dispute:** it checks paid orders for dispute risk before they ship, negotiates partial refunds inside a ceiling the buyer never sees, and warns a shop about buyers other shops have already proven wrong.
+- **Try it:** the Simulator returns PayPal's own payloads with no login, and one toggle switches to the real PayPal sandbox.
+
+## What makes this different
+
+- **The whole PayPal dispute lifecycle, not a checkout button:** investigate, add tracking, send evidence, offer, refund and the sandbox ruling. It was verified live: evidence accepted, and a $184 "not received" claim ruled for the seller.
+- **The model never moves money.** Every PayPal write is made by server code, after the seller approves or inside autopilot rules that are checked in code after the model answers.
+- **It acts before a dispute exists.** The dispute shield scores each paid order from fixed, published weights, and Gemini explains what to do before shipping.
+- **An AI negotiator with code-enforced limits.** It haggles in the PayPal dispute conversation, and code blocks any move over the ceiling or backwards.
+- **One seller's win protects the others.** The repeat-scammer network shares only a salted hash of the buyer's email, never names, addresses or amounts.
+- **It heals its own PayPal calls.** Outages are retried and expired tokens refreshed. Business refusals like `INSUFFICIENT_FUNDS` are explained by Gemini, never retried blindly.
+
+## Architecture
+
+```mermaid
+flowchart TD
+  buyer([Buyer]) -->|opens a dispute| paypal[(PayPal REST APIs<br/>sandbox or live)]
+  paypal -->|CUSTOMER.DISPUTE.* webhook,<br/>signature verified| hook[Webhook handler]
+  hook --> agent[Investigator agent loop]
+  agent <-->|function calling| gemini[Google Gemini]
+  agent -->|Agent Toolkit reads:<br/>get_dispute, get_order,<br/>get_shipment_tracking, list_transactions| paypal
+  agent --> rules{Autopilot rules<br/>plain code}
+  rules -->|inside the seller's limits| writes[Server-side PayPal writes:<br/>provide-evidence, tracking,<br/>make-offer, accept-claim]
+  rules -->|anything else| ui[Seller app: Disputes, Protect,<br/>Insights, Ask AI<br/>AG Grid + AG Studio]
+  ui -->|Approve| writes
+  writes --> paypal
+  ui -->|Let the agent negotiate| neg[Negotiator loop<br/>ceiling enforced in code]
+  neg --> writes
+  orders[Paid orders] --> shield[Dispute shield<br/>fixed risk weights + Gemini]
+  shield --> ui
+  agent --> store[(Cases, rules, incidents:<br/>memory or Postgres)]
+  store --> net[Repeat-scammer network<br/>hashed buyer emails]
+  net --> shield
+```
+
+Next.js 16 (App Router) and React 19 on one Render web service. The PayPal gateway has two interchangeable backends: the Simulator, which returns PayPal's exact JSON shapes, and the real sandbox. Seller accounts add Postgres (see [Seller accounts](#seller-accounts-for-real-sellers)).
+
+## The story
+
 A buyer says the package never came. The seller has days to respond. Most small sellers either refund out of fear or send a rushed reply that leaves out the evidence that would have won. Rebuttal investigates each dispute the moment it arrives. It reads the PayPal dispute, the order, the shipment tracker and the buyer's history, plus the shop's own records. Then it recommends one of three moves:
 
 - **Fight**, with an evidence statement written for the PayPal specialist and each fact traced to its source.
@@ -37,36 +85,7 @@ The app has four pages, so a seller sees what matters first:
 
 Autopilot rules live in a drawer (**Autopilot rules**, top right), demo controls in **Simulator tools**, and first-time visitors get a 3-step tour.
 
-### Built with AG Grid
-
-**AG Studio + the Studio Agent Framework (Ask AI page).** A seller who wants to know where the money goes shouldn't have to build a report. On **Ask AI**, they type a question and AG Studio's own agents build the answer as a dashboard: the lead agent plans, then hands work to the data, page and widget agents, which read the dispute schema, place KPIs, charts and grids, and wire up the fields. Every widget cross-filters the others and stays editable by hand. Studio never calls a model itself, so Rebuttal supplies the model: an `AgLlmAdapter` in the browser ([`src/components/AskStudio.tsx`](src/components/AskStudio.tsx)) sends each turn to [`/api/studio/turn`](src/app/api/studio/turn/route.ts), which converts Studio's conversation and tool schemas to Gemini function calling and back ([`src/lib/model/studio-turn.ts`](src/lib/model/studio-turn.ts)). Making Gemini work with Studio's tools took three fixes, all unit-tested: thought signatures carried through Studio's call ids, recursive layout schemas loosened so Gemini accepts them, and a repair for one-of arguments the model flattens (`type: "page"` back to `type: { id: "page" }`). The data source is one row per dispute with a plain-English description of every field, so the agents know what "kept" and "AI win chance" mean. The page loads AG Studio only when opened; `AG_STUDIO_LICENSE_KEY` removes the trial watermark. The four suggested questions replay saved real Gemini runs turn by turn ([`src/lib/studio-cache.ts`](src/lib/studio-cache.ts); ids, timestamps and thread names are left out of the key), so they finish in about 10 seconds instead of 2 to 3 minutes, even with no Gemini quota left. Anything else runs live. `STUDIO_RECORD=1` records new runs.
-
-**AG Grid in the rest of the app.** Seven grids: the dispute queue, the outcomes ledger, the dispute shield, the dispute memory, the autopilot rules, the self-healing incident log and the evidence trail on each case.
-
-- **Custom Rebuttal theme (Theming API):** `themeQuartz` with the `iconSetQuartzBold`, `inputStyleBordered` and `checkboxStyleDefault` parts and about 30 params (selection, hover, zebra rows, editing and invalid borders, focus ring, header and pinned-row rules), all set from the app's CSS variables, so all seven grids follow light and dark mode with no grid CSS overrides.
-- **Row selection for bulk approve:** multi-row checkboxes, a header select-all that respects filters, `isRowSelectable` so only open disputes can be ticked, hidden disabled checkboxes and a pinned selection column. The seller ticks rows and approves the agent's refunds and evidence in one click; the server checks the $250 hard cap and the guardrails again for every row.
-- **Inline cell editing with validation:** the autopilot rules are an editable grid. `cellEditorSelector` picks `agCheckboxCellEditor` or `agNumberCellEditor` (min, max, precision, stepper) per row, a `valueSetter` writes into a draft, and every cell is validated against the others (the refund limit can't exceed the hard cap) with the error shown in the cell. Save stays disabled until all cells pass.
-- **Filtering:** quick filter with a custom `getQuickFilterText`, floating text and number filters, an `agDateColumnFilter` with a calendar-day comparator, and `setColumnFilterModel` driven by chart clicks.
-- **Full-width detail rows** (`isFullWidthRow`, `fullWidthCellRenderer`, `getRowHeight`), kept under their parent through any sort by `postSortRows`.
-- **Pinned bottom totals row** recalculated from `forEachNodeAfterFilter`, drawn with `cellRendererSelector`.
-- **Pagination** with a page-size selector on the outcomes ledger and the dispute memory.
-- **Live updates:** delta updates through `getRowId` and `enableCellChangeFlash` when autopilot or PayPal changes a dispute.
-- **Saved layout:** column order, widths and sort persisted with `getColumnState` and `applyColumnState`.
-- **CSV export** with `columnKeys` that include hidden export-only columns and a `processCellCallback` for dates.
-- **Also:** React cell renderers (risk badges, score bars, deadlines, next-step buttons), tooltips, `wrapText` with `autoHeight` rows, `domLayout="autoHeight"`, custom comparators and multi-column sort.
-- **AG Charts Community** linked both ways with the outcomes grid: charts drawn from the filtered rows, a bar click filters the grid.
-- **AG Grid Enterprise (with `AG_GRID_LICENSE_KEY` on the server):** the key switches on, without a code change:
-  - **Outcomes ledger:** row grouping by claim type with a group-by bar, sum totals per group and a grand total; **pivot mode** and the **Columns and Filters tool panels** in a side bar; **set filters** on claim, decision, answered-by and result; **master-detail**, where each dispute expands into the evidence the agent weighed (its own grid) next to the dispute's timeline; **cell selection** with a **status bar** that sums, averages and counts the cells you drag across; **integrated charts** from the right-click menu (Chart Range, Pivot Chart) and a **Chart in grid** button that draws a cross-filter chart of money kept vs refunded by claim type, in the app's colors, where clicking a bar filters the ledger; and **Excel export**.
-  - **Dispute queue:** a right-click menu to open a dispute, investigate it, or tick it for bulk approve (approval still goes through the confirm step and the server's guardrails), plus Excel export and a status bar with row and selection counts.
-  - Without the key, the Enterprise bundle is never downloaded and every grid stays Community, with no watermark.
-- **Scale check:** on Insights, **Load 100,000 disputes** fills one grid with simulated disputes (fixed seed, labeled) and shows the time for each step: about 50 ms to generate, 200 to 300 ms to first paint, and 250 to 500 ms for a sort, a quick search or (Enterprise) regrouping 100,000 rows with sums, measured in headless Chromium.
-- **Realistic data:** the Simulator starts with 50 closed past disputes (fixed seed, marked as simulated) so the charts, filters and pagination have something to work on.
-
 The inbox works as a triage queue: disputes are ranked by money at risk and days left before PayPal's response deadline, and a savings dashboard shows money protected, hours saved and how many disputes autopilot closed.
-
-Built for the [Build What's Next with PayPal and AI](https://paypalaihackathon.devpost.com/) hackathon.
-
-**Live demo:** https://rebuttal-6j9a.onrender.com _(free instance: if it has been idle, the first load takes about a minute)_
 
 ## Try it (no PayPal login needed)
 
@@ -120,6 +139,31 @@ Google Gemini (`gemini-3.5-flash-lite` on the free tier by default, falling back
 The model never moves money. Every write call to PayPal is made by the server, after a person clicks Approve, when the seller's autopilot rules ([`src/lib/rules.ts`](src/lib/rules.ts)) allow it, or inside the ceiling the seller gave the negotiator, and the rules are plain code checked after the model answers, not instructions to the model.
 
 Finished investigations are saved (`cache/investigations/`) and replayed step by step for the same dispute facts, so the hosted demo keeps working when the free tier's per-minute limit is hit. **Re-run** forces a fresh investigation. If every Gemini model fails (rate limit, overload or timeout, after moving down the fallback list), it falls back to the saved one and the case shows a "Using saved analysis" note.
+
+## How it uses AG Grid
+
+**AG Studio + the Studio Agent Framework (Ask AI page).** A seller who wants to know where the money goes shouldn't have to build a report. On **Ask AI**, they type a question and AG Studio's own agents build the answer as a dashboard: the lead agent plans, then hands work to the data, page and widget agents, which read the dispute schema, place KPIs, charts and grids, and wire up the fields. Every widget cross-filters the others and stays editable by hand. Studio never calls a model itself, so Rebuttal supplies the model: an `AgLlmAdapter` in the browser ([`src/components/AskStudio.tsx`](src/components/AskStudio.tsx)) sends each turn to [`/api/studio/turn`](src/app/api/studio/turn/route.ts), which converts Studio's conversation and tool schemas to Gemini function calling and back ([`src/lib/model/studio-turn.ts`](src/lib/model/studio-turn.ts)). Making Gemini work with Studio's tools took three fixes, all unit-tested: thought signatures carried through Studio's call ids, recursive layout schemas loosened so Gemini accepts them, and a repair for one-of arguments the model flattens (`type: "page"` back to `type: { id: "page" }`). The data source is one row per dispute with a plain-English description of every field, so the agents know what "kept" and "AI win chance" mean. The page loads AG Studio only when opened. AG Studio has its own key: without `AG_STUDIO_LICENSE_KEY` every feature still works, but the dashboard shows a trial watermark and the browser console prints "License Key Not Found". The four suggested questions replay saved real Gemini runs turn by turn ([`src/lib/studio-cache.ts`](src/lib/studio-cache.ts); ids, timestamps and thread names are left out of the key), so they finish in about 10 seconds instead of 2 to 3 minutes, even with no Gemini quota left. Anything else runs live. `STUDIO_RECORD=1` records new runs.
+
+**AG Grid in the rest of the app.** Seven grids: the dispute queue, the outcomes ledger, the dispute shield, the dispute memory, the autopilot rules, the self-healing incident log and the evidence trail on each case.
+
+- **Custom Rebuttal theme (Theming API):** `themeQuartz` with the `iconSetQuartzBold`, `inputStyleBordered` and `checkboxStyleDefault` parts and about 30 params (selection, hover, zebra rows, editing and invalid borders, focus ring, header and pinned-row rules), all set from the app's CSS variables, so all seven grids follow light and dark mode with no grid CSS overrides.
+- **Row selection for bulk approve:** multi-row checkboxes, a header select-all that respects filters, `isRowSelectable` so only open disputes can be ticked, hidden disabled checkboxes and a pinned selection column. The seller ticks rows and approves the agent's refunds and evidence in one click; the server checks the $250 hard cap and the guardrails again for every row.
+- **Inline cell editing with validation:** the autopilot rules are an editable grid. `cellEditorSelector` picks `agCheckboxCellEditor` or `agNumberCellEditor` (min, max, precision, stepper) per row, a `valueSetter` writes into a draft, and every cell is validated against the others (the refund limit can't exceed the hard cap) with the error shown in the cell. Save stays disabled until all cells pass.
+- **Filtering:** quick filter with a custom `getQuickFilterText`, floating text and number filters, an `agDateColumnFilter` with a calendar-day comparator, and `setColumnFilterModel` driven by chart clicks.
+- **Full-width detail rows** (`isFullWidthRow`, `fullWidthCellRenderer`, `getRowHeight`), kept under their parent through any sort by `postSortRows`.
+- **Pinned bottom totals row** recalculated from `forEachNodeAfterFilter`, drawn with `cellRendererSelector`.
+- **Pagination** with a page-size selector on the outcomes ledger and the dispute memory.
+- **Live updates:** delta updates through `getRowId` and `enableCellChangeFlash` when autopilot or PayPal changes a dispute.
+- **Saved layout:** column order, widths and sort persisted with `getColumnState` and `applyColumnState`.
+- **CSV export** with `columnKeys` that include hidden export-only columns and a `processCellCallback` for dates.
+- **Also:** React cell renderers (risk badges, score bars, deadlines, next-step buttons), tooltips, `wrapText` with `autoHeight` rows, `domLayout="autoHeight"`, custom comparators and multi-column sort.
+- **AG Charts Community** linked both ways with the outcomes grid: charts drawn from the filtered rows, a bar click filters the grid.
+- **AG Grid Enterprise (with `AG_GRID_LICENSE_KEY` on the server):** the key switches on, without a code change:
+  - **Outcomes ledger:** row grouping by claim type with a group-by bar, sum totals per group and a grand total; **pivot mode** and the **Columns and Filters tool panels** in a side bar; **set filters** on claim, decision, answered-by and result; **master-detail**, where each dispute expands into the evidence the agent weighed (its own grid) next to the dispute's timeline; **cell selection** with a **status bar** that sums, averages and counts the cells you drag across; **integrated charts** from the right-click menu (Chart Range, Pivot Chart) and a **Chart in grid** button that draws a cross-filter chart of money kept vs refunded by claim type, in the app's colors, where clicking a bar filters the ledger; and **Excel export**.
+  - **Dispute queue:** a right-click menu to open a dispute, investigate it, or tick it for bulk approve (approval still goes through the confirm step and the server's guardrails), plus Excel export and a status bar with row and selection counts.
+  - With no `AG_GRID_LICENSE_KEY` set at all, the Enterprise bundle is never downloaded and every grid stays Community, with no watermark. If the variable is set but the key is expired, mistyped or for another AG Grid version (this project uses 36.x), AG Grid loads Enterprise and shows an **"Invalid License"** watermark: replace the key or delete the variable.
+- **Scale check:** on Insights, **Load 100,000 disputes** fills one grid with simulated disputes (fixed seed, labeled) and shows the time for each step: about 50 ms to generate, 200 to 300 ms to first paint, and 250 to 500 ms for a sort, a quick search or (Enterprise) regrouping 100,000 rows with sums, measured in headless Chromium.
+- **Realistic data:** the Simulator starts with 50 closed past disputes (fixed seed, marked as simulated) so the charts, filters and pagination have something to work on.
 
 ## Run it locally
 

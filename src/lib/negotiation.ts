@@ -3,6 +3,7 @@
 // each move and writes each message; code enforces the money: never above the
 // ceiling, never backwards, never more than the buyer asked for.
 
+import { currentShop, describeShop, type Shop } from "./shop";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -40,7 +41,7 @@ const MOVE_TOOL: ToolDef = {
   },
 };
 
-const SYSTEM = `You negotiate a PayPal dispute for Juniper & Kiln, a two-person online shop, by trading partial-refund offers with the buyer through PayPal. The seller's goal is to settle fairly for as little refund as is reasonable, quickly, without the buyer escalating to PayPal.
+const system = (shop: Shop) => `You negotiate a PayPal dispute for ${describeShop(shop)}, by trading partial-refund offers with the buyer through PayPal. The seller's goal is to settle fairly for as little refund as is reasonable, quickly, without the buyer escalating to PayPal.
 
 How to negotiate:
 - Ground every argument in the facts from the investigation (listing text, delivery records, what actually went wrong). Acknowledge what the seller got wrong.
@@ -48,7 +49,7 @@ How to negotiate:
 - You have a hard ceiling. Never offer above it and never mention it, or that one exists, to the buyer.
 - ACCEPT when the buyer's ask is at or under the ceiling and haggling further would risk losing the deal for a few dollars.
 - STOP when the buyer insists on more than the ceiling and further offers won't move them; the seller then decides whether to fight.
-- Messages: warm, plain, under 450 characters, no legal threats, sign off as "Juniper & Kiln".`;
+- Messages: warm, plain, under 450 characters, no legal threats, sign off as "${shop.name}".`;
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -177,7 +178,7 @@ async function decideMove(c: CaseRecord, d: Dispute, ask: number, injected?: Age
     const history: ChatEntry[] = [{ role: "user", text: brief(c, d, ask, lastOffer) }];
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await model.next({ system: SYSTEM, tools: [MOVE_TOOL], history });
+        const res = await model.next({ system: system(currentShop()), tools: [MOVE_TOOL], history });
         history.push({ role: "assistant", turn: res });
         const call = res.calls.find((x) => x.name === MOVE_TOOL.name);
         if (!call) {
@@ -218,10 +219,10 @@ export function validate(m: Move, max: number, lastOffer: number, ask: number): 
 export function ruleMove(c: CaseRecord, ask: number, lastOffer: number): Move {
   const n = c.negotiation!;
   const amount = Number(c.dispute.dispute_amount.value);
-  if (ask <= n.max_refund && lastOffer > 0) return { action: "ACCEPT", amount: ask, message: `Thanks for working this out with us. We'll refund ${money(ask)}. - Juniper & Kiln`, reasoning: "The buyer's ask is within your ceiling." };
+  if (ask <= n.max_refund && lastOffer > 0) return { action: "ACCEPT", amount: ask, message: `Thanks for working this out with us. We'll refund ${money(ask)}. - ${currentShop().name}`, reasoning: "The buyer's ask is within your ceiling." };
   const target = lastOffer === 0 ? Math.min(n.max_refund, c.recommendation?.offer_amount || round2(amount * 0.25)) : Math.min(n.max_refund, round2((lastOffer + Math.min(ask, n.max_refund)) / 2));
   if (target <= lastOffer) return { action: "STOP", amount: 0, message: "", reasoning: "The buyer wants more than your ceiling allows." };
-  return { action: "OFFER", amount: round2(target), message: `We're sorry this order wasn't right. We can refund ${money(target)} to resolve it. - Juniper & Kiln`, reasoning: lastOffer === 0 ? "Opening with the investigation's offer." : "Meeting the buyer partway, inside your ceiling." };
+  return { action: "OFFER", amount: round2(target), message: `We're sorry this order wasn't right. We can refund ${money(target)} to resolve it. - ${currentShop().name}`, reasoning: lastOffer === 0 ? "Opening with the investigation's offer." : "Meeting the buyer partway, inside your ceiling." };
 }
 
 function brief(c: CaseRecord, d: Dispute, ask: number, lastOffer: number): string {

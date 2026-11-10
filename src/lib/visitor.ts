@@ -10,7 +10,7 @@ import { SESSION_COOKIE, sellerForSession, type PayPalConnection } from "./auth/
 export type Mode = "mock" | "sandbox";
 // A signed-in seller. Their "sandbox" mode is their own connected PayPal account
 // (PayPal's sandbox or live API, whichever they connected).
-export type SellerRef = { id: string; email: string; paypal: PayPalConnection | null };
+export type SellerRef = { id: string; email: string; paypal: PayPalConnection | null; shop_name?: string };
 export type Visitor = { id: string; mode: Mode; seller?: SellerRef };
 
 const VISITOR_COOKIE = "rebuttal_visitor";
@@ -73,7 +73,7 @@ export function withVisitor<A extends unknown[]>(handler: (req: Request, ...rest
       console.error("session lookup failed:", e instanceof Error ? e.message : e);
       return null;
     });
-    const seller: SellerRef | undefined = found ? { id: found.id, email: found.email, paypal: found.paypal } : undefined;
+    const seller: SellerRef | undefined = found ? { id: found.id, email: found.email, paypal: found.paypal, shop_name: found.shop_name } : undefined;
     const wanted = readCookie(req, MODE_COOKIE);
     const mode: Mode = wanted === "sandbox" && sandboxAvailable(seller) ? "sandbox" : wanted === "mock" ? "mock" : defaultMode(seller);
     const v: Visitor = { id, mode, seller };

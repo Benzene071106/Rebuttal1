@@ -4,6 +4,7 @@
 // the Agent Toolkit's get_order and the buyer's history, including every dispute
 // Rebuttal has handled for that buyer ("dispute memory").
 
+import { currentShop, describeShop, type Shop } from "./shop";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -37,7 +38,7 @@ export type ShieldCheck = {
 const MAX_TURNS = 8;
 const REPLAY_STEP_MS = 350;
 
-const SYSTEM = `You protect Juniper & Kiln, a two-person online shop paid through PayPal, from disputes before they happen. A buyer has just paid and the order has not shipped yet. Decide how likely this order is to end in a PayPal dispute or chargeback, and what the seller should do before shipping.
+const system = (shop: Shop) => `You protect ${describeShop(shop)} paid through PayPal, from disputes before they happen. A buyer has just paid and the order has not shipped yet. Decide how likely this order is to end in a PayPal dispute or chargeback, and what the seller should do before shipping.
 
 A fixed rule-based check has already scored the order; you are told its score, band and the signals behind it. You do not change the score or the band. Read the PayPal order with get_order and the buyer's history with get_buyer_history, then call submit_risk exactly once with a headline that explains the result and the steps to take.
 
@@ -243,7 +244,7 @@ export async function assessOrder(
 
   let nudged = false;
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const res = await model.next({ system: SYSTEM, tools, history });
+    const res = await model.next({ system: system(currentShop()), tools, history });
     if (res.stop === "refusal") throw new Error("The model declined to check this order.");
     if (res.stop === "max_tokens") throw new Error("The check ran out of output space.");
     history.push({ role: "assistant", turn: res });

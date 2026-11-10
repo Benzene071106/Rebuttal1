@@ -11,6 +11,7 @@
 // In this demo the other shops are simulated (fixed reports below, labeled as such in
 // the UI). This shop's own reports come from its real case history.
 
+import { currentShop } from "./shop";
 import crypto from "node:crypto";
 import { listCases } from "./cases";
 import type { CaseRecord, DisputeReason } from "./types";
@@ -35,7 +36,6 @@ export type NetworkMatch = {
 // Salted so the hash can't be matched against a plain list of email hashes.
 export const buyerHash = (email: string) => crypto.createHash("sha256").update(`rebuttal-network:v1:${email.trim().toLowerCase()}`).digest("hex").slice(0, 16);
 
-export const SHOP_NAME = "Juniper & Kiln";
 const DAY = 86_400_000;
 
 // Reports from other (simulated) Rebuttal shops. Emails are hashed at load, exactly as a
@@ -64,7 +64,7 @@ export function reportFromCase(c: CaseRecord): NetworkReport | null {
   if (c.dispute.reason !== "MERCHANDISE_OR_SERVICE_NOT_RECEIVED" && c.dispute.reason !== "UNAUTHORISED") return null;
   const ev = c.recommendation?.evidence.find((e) => PROVEN.test(e.type));
   if (!ev) return null;
-  return { buyer_hash: buyerHash(email), shop: SHOP_NAME, simulated_shop: false, reason: c.dispute.reason, evidence: ev.summary, outcome: "WON", at: c.outcome.at };
+  return { buyer_hash: buyerHash(email), shop: currentShop().name, simulated_shop: false, reason: c.dispute.reason, evidence: ev.summary, outcome: "WON", at: c.outcome.at };
 }
 
 export async function allReports(now = Date.now()): Promise<NetworkReport[]> {
@@ -84,7 +84,7 @@ export async function allReports(now = Date.now()): Promise<NetworkReport[]> {
 // Reports from other shops about this buyer.
 export async function networkFor(email: string | undefined | null): Promise<NetworkMatch> {
   const hash = buyerHash(email ?? "");
-  const reports = email ? (await allReports()).filter((r) => r.buyer_hash === hash && r.shop !== SHOP_NAME) : [];
+  const reports = email ? (await allReports()).filter((r) => r.buyer_hash === hash && r.simulated_shop) : [];
   return { buyer_hash: hash, other_shops: new Set(reports.map((r) => r.shop)).size, reports };
 }
 
@@ -121,10 +121,10 @@ export async function listNetwork(known: Array<{ email: string; name: string }>)
         reasons: [...new Set(rs.map((r) => r.reason))],
         evidence: latest.evidence,
         last_at: latest.at,
-        yours: rs.filter((r) => r.shop === SHOP_NAME).length,
+        yours: rs.filter((r) => !r.simulated_shop).length,
       };
     })
     // Accounts seen at more than one shop are the ones the network exists for.
     .sort((a, b) => b.shops - a.shops || b.reports - a.reports || b.last_at.localeCompare(a.last_at));
-  return { accounts, shops: new Set(reports.map((r) => r.shop)).size, reports: reports.length, shared: reports.filter((r) => r.shop === SHOP_NAME).length };
+  return { accounts, shops: new Set(reports.map((r) => r.shop)).size, reports: reports.length, shared: reports.filter((r) => !r.simulated_shop).length };
 }

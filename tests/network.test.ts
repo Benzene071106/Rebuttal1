@@ -52,3 +52,13 @@ describe("Rebuttal network", () => {
     expect((await listNetwork([])).shared).toBe(1);
   });
 });
+
+describe("shop name", () => {
+  it("speaks for a signed-in seller's own shop, and the demo shop otherwise", async () => {
+    const { currentShop, describeShop } = await import("../src/lib/shop");
+    const seller = { id: "s1", email: "a@b.co", paypal: null, shop_name: "Mehta Handlooms" };
+    expect(currentShop({ id: "v", mode: "sandbox", seller }).name).toBe("Mehta Handlooms");
+    expect(describeShop(currentShop({ id: "v", mode: "mock" }))).toBe("Juniper & Kiln, a two-person online shop");
+    expect(currentShop({ id: "v", mode: "sandbox", seller: { ...seller, shop_name: "" } }).name).toBe("the seller's shop");
+  });
+});

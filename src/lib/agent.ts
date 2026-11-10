@@ -2,6 +2,7 @@
 // dispute with read-only PayPal Agent Toolkit tools and the shop's own records, then
 // returns a recommendation the seller approves or edits.
 
+import { currentShop, describeShop, type Shop } from "./shop";
 import { z } from "zod";
 import { defaultModel, type AgentModel } from "./model";
 import type { ChatEntry, ToolResult } from "./model/types";
@@ -12,7 +13,7 @@ import type { Dispute, Recommendation, TraceStep } from "./types";
 
 const MAX_TURNS = 14;
 
-const SYSTEM = `You review PayPal disputes for Juniper & Kiln, a two-person online shop, and recommend how the seller should respond. The seller reads your recommendation and approves or edits it before anything is sent to PayPal.
+const system = (shop: Shop) => `You review PayPal disputes for ${describeShop(shop)}, and recommend how the seller should respond. The seller reads your recommendation and approves or edits it before anything is sent to PayPal.
 
 Investigate before you decide. Read the dispute, the PayPal order, the PayPal shipment tracker, the buyer's PayPal transaction history with the shop, and the shop's own records (listing text, customer messages, carrier scans). Compare the carrier's delivery address with the shipping address on the PayPal order. Then call submit_recommendation exactly once.
 
@@ -138,7 +139,7 @@ export async function analyzeDispute(dispute: Dispute, opts: AnalyzeOptions = {}
 
   let nudged = false;
   for (let turn = 0; turn < MAX_TURNS; turn++) {
-    const res = await model.next({ system: SYSTEM, tools, history });
+    const res = await model.next({ system: system(currentShop()), tools, history });
 
     if (res.stop === "refusal") throw new Error("The model declined to analyze this dispute.");
     if (res.stop === "max_tokens") throw new Error("The analysis ran out of output space.");

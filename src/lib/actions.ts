@@ -4,6 +4,7 @@ import { getCase, updateCase } from "./cases";
 import { withCaseLock } from "./locks";
 import { paypal } from "./paypal";
 import { withRecovery } from "./recovery";
+import { runAs, visitor } from "./visitor";
 import type { CaseRecord, Decision, Dispute, EvidenceType, PayPalReceipt } from "./types";
 
 export type Approval = {
@@ -12,7 +13,14 @@ export type Approval = {
   offer_amount?: number;
   offer_type?: "REFUND" | "REFUND_WITH_RETURN";
   by?: "seller" | "autopilot";
+  // Simulator only: play PayPal's ruling on the server a little later, for fights sent
+  // where no case page is open to run the countdown (autopilot, bulk approve).
+  autoRule?: boolean;
 };
+
+// Seconds before the simulator rules on a fight that autopilot or bulk approve sent.
+// Longer than the case page's own countdown, so an open page still rules first.
+export const SIM_AUTO_RULING_MS = 8_000;
 
 export function approve(caseId: string, a: Approval): Promise<CaseRecord> {
   // The lock is taken before the first await, so a second approve for the same
@@ -24,7 +32,11 @@ async function send(caseId: string, a: Approval): Promise<CaseRecord> {
   const c = await getCase(caseId);
   if (!c) throw new Error(`Unknown case ${caseId}`);
   if (c.submitted) throw new Error("A response was already sent for this dispute.");
+  if (c.outcome) throw new Error("This dispute is already closed.");
   if (c.status === "ANALYZING") throw new Error("Wait for the investigation to finish before sending a response.");
+  if (!c.recommendation) throw new Error("Investigate the dispute before sending a response.");
+  // PayPal takes no partial-refund offers once a dispute is a card chargeback.
+  if (a.decision === "OFFER" && c.dispute.dispute_life_cycle_stage === "CHARGEBACK") throw new Error("PayPal doesn't allow offers on a chargeback. Send evidence or refund instead.");
   const gw = paypal();
   const r = c.recommendation;
   const currency = c.dispute.dispute_amount.currency_code;
@@ -68,6 +80,7 @@ async function send(caseId: string, a: Approval): Promise<CaseRecord> {
   }
 
   const dispute = await gw.getDispute(caseId);
+  if (a.decision === "FIGHT" && a.autoRule && gw.mode === "mock") scheduleSimRuling(caseId);
   if (receipt) receipt = { ...receipt, status_after: dispute.status, stage_after: dispute.dispute_life_cycle_stage };
   return await updateCase(caseId, {
     dispute,
@@ -82,10 +95,21 @@ async function note(caseId: string, summary: string, kind: "note" | "error" = "n
   if (c) await updateCase(caseId, { trace: [...c.trace, { at: new Date().toISOString(), kind, summary }] });
 }
 
+function scheduleSimRuling(caseId: string) {
+  const v = { ...visitor() };
+  setTimeout(() => {
+    // A case page that was open may have ruled already; that refusal is expected.
+    runAs(v, () => simulateRuling(caseId, "SELLER_FAVOR")).catch(() => {});
+  }, SIM_AUTO_RULING_MS).unref?.();
+}
+
 // Sandbox only: ask PayPal to rule on the dispute so the full lifecycle can be shown.
+// A ruling happens once, on a fight or an offer that is still waiting.
 export async function simulateRuling(caseId: string, outcome: "SELLER_FAVOR" | "BUYER_FAVOR"): Promise<CaseRecord> {
   const c = await getCase(caseId);
   if (!c?.submitted) throw new Error("Send a response before simulating PayPal's ruling.");
+  if (c.outcome) throw new Error("This dispute is already closed, so there is nothing left for PayPal to rule on.");
+  if (c.submitted.decision === "REFUND") throw new Error("This dispute was refunded, so there is nothing left for PayPal to rule on.");
   await paypal().simulateRuling(caseId, outcome);
   const dispute = await paypal().getDispute(caseId);
   const o = outcomeFor(dispute, c.submitted.decision);

@@ -147,7 +147,15 @@ export default function CaseView({ id }: { id: string }) {
     const res = await fetch(`/api/cases/${id}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const json = await res.json();
     setBusy(null);
-    if (!res.ok) return setError(json.error);
+    if (!res.ok) {
+      // The simulator may already have ruled on its own (an autopilot fight): show that
+      // result instead of an error.
+      if (path === "ruling") {
+        const now = await fetch(`/api/cases/${id}`, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        if (now?.outcome) return adopt(now);
+      }
+      return setError(json.error);
+    }
     adopt(json);
   }
 
@@ -242,7 +250,8 @@ export default function CaseView({ id }: { id: string }) {
       {c.history ? null : <NetworkBanner caseId={c.id} />}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.4fr]">
-        <div className="space-y-6">
+        {/* On wide screens the left column stays in view beside the long right one. */}
+        <div className="space-y-6 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
           {c.activity?.length ? (
             <Panel title="Alerts">
               <ol className="space-y-1.5">

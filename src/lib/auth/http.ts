@@ -31,9 +31,7 @@ function recent(key: string): number[] {
   return list;
 }
 
-export function clientIp(req: Request): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-}
+export { clientIp } from "../visitor";
 
 export function tooManyAttempts(...keys: string[]): boolean {
   return keys.some((k) => recent(k).length >= MAX_FAILS);

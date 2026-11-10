@@ -11,7 +11,8 @@ export type Mode = "mock" | "sandbox";
 // A signed-in seller. Their "sandbox" mode is their own connected PayPal account
 // (PayPal's sandbox or live API, whichever they connected).
 export type SellerRef = { id: string; email: string; paypal: PayPalConnection | null; shop_name?: string };
-export type Visitor = { id: string; mode: Mode; seller?: SellerRef };
+// ip: the caller's address, for rate limits on live AI calls.
+export type Visitor = { id: string; mode: Mode; seller?: SellerRef; ip?: string };
 
 const VISITOR_COOKIE = "rebuttal_visitor";
 const MODE_COOKIE = "rebuttal_mode";
@@ -76,12 +77,22 @@ export function withVisitor<A extends unknown[]>(handler: (req: Request, ...rest
     const seller: SellerRef | undefined = found ? { id: found.id, email: found.email, paypal: found.paypal, shop_name: found.shop_name } : undefined;
     const wanted = readCookie(req, MODE_COOKIE);
     const mode: Mode = wanted === "sandbox" && sandboxAvailable(seller) ? "sandbox" : wanted === "mock" ? "mock" : defaultMode(seller);
-    const v: Visitor = { id, mode, seller };
+    const v: Visitor = { id, mode, seller, ip: clientIp(req) };
     const res = await als.run(v, () => handler(req, ...rest));
     if (id !== existing) res.headers.append("Set-Cookie", cookie(VISITOR_COOKIE, id));
     if (v.mode !== wanted) res.headers.append("Set-Cookie", cookie(MODE_COOKIE, v.mode));
     return res;
   };
+}
+
+// The caller's address. Render sits behind Cloudflare, which sets cf-connecting-ip /
+// true-client-ip itself; x-forwarded-for's first value is whatever the caller sent, so
+// only its last hop (added by the proxy in front of us) is used.
+export function clientIp(req: Request): string {
+  const direct = req.headers.get("cf-connecting-ip") ?? req.headers.get("true-client-ip");
+  if (direct?.trim()) return direct.trim();
+  const hops = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return hops.at(-1) || "local";
 }
 
 export function cookie(name: string, value: string, maxAge = YEAR) {

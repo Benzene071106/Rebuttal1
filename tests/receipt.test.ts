@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { approve } from "../src/lib/actions";
-import { resetCases, syncCases, updateCase } from "../src/lib/cases";
+import { resetCases, syncCases } from "../src/lib/cases";
 import { resetMock } from "../src/lib/paypal/mock";
 import { resetIncidents } from "../src/lib/recovery";
 import { resetRules } from "../src/lib/rules";
+
+import { ready } from "./ready";
 
 process.env.PAYPAL_MODE = "mock";
 
@@ -17,7 +19,7 @@ describe("proof that PayPal accepted the response", () => {
 
   it("records the endpoint, PayPal's answer and the dispute status after the call", async () => {
     const [c] = await syncCases();
-    await updateCase(c.id, { status: "READY" });
+    await ready(c.id);
     const sent = await approve(c.id, { decision: "FIGHT", response: "Tracking shows delivery." });
     const r = sent.submitted?.receipt;
     expect(r?.endpoint).toBe(`/v1/customer/disputes/${c.id}/provide-evidence`);
@@ -28,7 +30,7 @@ describe("proof that PayPal accepted the response", () => {
 
   it("records the accept-claim call for a refund", async () => {
     const [c] = await syncCases();
-    await updateCase(c.id, { status: "READY" });
+    await ready(c.id);
     const sent = await approve(c.id, { decision: "REFUND", response: "Refunding." });
     expect(sent.submitted?.receipt?.endpoint).toMatch(/accept-claim$/);
     expect(sent.submitted?.receipt?.status_after).toBe("RESOLVED");

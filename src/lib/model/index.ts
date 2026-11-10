@@ -4,8 +4,15 @@
 import { claudeModel } from "./claude";
 import { geminiModel } from "./gemini";
 import type { AgentModel } from "./types";
+import { takeModelCall } from "../rate-limit";
 
+// Every live call made through the default model counts against the shared limits.
 export function defaultModel(): AgentModel {
+  const m = pickModel();
+  return { ...m, next: (...args: Parameters<AgentModel["next"]>) => (takeModelCall(), m.next(...args)) };
+}
+
+function pickModel(): AgentModel {
   const choice = process.env.AI_PROVIDER?.toLowerCase();
   if (choice === "claude") return claudeModel();
   if (choice === "gemini") return geminiModel();

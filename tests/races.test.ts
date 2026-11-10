@@ -7,6 +7,8 @@ import { armFault, resetMock } from "../src/lib/paypal/mock";
 import { resetIncidents } from "../src/lib/recovery";
 import { resetRules } from "../src/lib/rules";
 
+import { ready } from "./ready";
+
 process.env.PAYPAL_MODE = "mock";
 
 describe("one action per dispute at a time", () => {
@@ -19,7 +21,7 @@ describe("one action per dispute at a time", () => {
 
   it("sends only one response when approve is clicked five times during a PayPal outage", async () => {
     const [c] = await syncCases();
-    await updateCase(c.id, { status: "READY" });
+    await ready(c.id);
     armFault("OUTAGE"); // slows the first call down with retries, widening the race window
     const results = await Promise.allSettled(Array.from({ length: 5 }, () => approve(c.id, { decision: "FIGHT", response: "Tracking shows delivery." })));
     const ok = results.filter((r) => r.status === "fulfilled");
@@ -47,8 +49,9 @@ describe("one action per dispute at a time", () => {
   }, 30_000);
 
   it("rounds offers to cents and refuses one that rounds to $0.00", async () => {
-    const [c] = await syncCases();
-    await updateCase(c.id, { status: "READY" });
+    // The $96 mug inquiry: offers aren't allowed once a dispute is a chargeback.
+    const c = (await syncCases()).find((x) => x.dispute.dispute_life_cycle_stage !== "CHARGEBACK")!;
+    await ready(c.id);
     await expect(approve(c.id, { decision: "OFFER", response: "Partial refund.", offer_amount: 0.001 })).rejects.toThrow("$0.01");
     expect((await getCase(c.id))?.submitted).toBeUndefined();
     const sent = await approve(c.id, { decision: "OFFER", response: "Partial refund.", offer_amount: 10.006 });

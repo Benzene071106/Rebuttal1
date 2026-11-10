@@ -15,6 +15,7 @@ import type { ChatEntry } from "./model/types";
 import { paypal } from "./paypal";
 import type { ToolDef } from "./paypal/gateway";
 import { RecoveryPausedError, withRecovery } from "./recovery";
+import { getRules } from "./rules";
 import type { CaseRecord, Dispute, Negotiation, NegotiationTurn } from "./types";
 import { tenant } from "./visitor";
 
@@ -74,6 +75,11 @@ export async function negotiate(caseId: string, opts: { maxRefund?: number; onTu
     if (c.submitted) throw new Error("A response was already sent for this dispute.");
     const max = round2(Number(opts.maxRefund));
     if (!(max > 0 && max < amount)) throw new Error(`The negotiation ceiling must be between $0 and ${money(amount)}.`);
+    // The seller's autopilot rule "Negotiator may refund at most N%" is a hard limit,
+    // whoever sends the request.
+    const pct = (await getRules()).negotiate_max_pct;
+    const cap = round2(amount * pct);
+    if (max > cap) throw new Error(`Your rules let the negotiator refund at most ${Math.round(pct * 100)}% (${money(cap)}) of this dispute. Lower the ceiling or change Autopilot rules.`);
     c = await updateCase(caseId, { negotiation: { status: "ACTIVE", max_refund: max, turns: [] } });
   } else if (c.negotiation.status === "SETTLED" || c.negotiation.status === "HANDED_BACK") {
     return c;

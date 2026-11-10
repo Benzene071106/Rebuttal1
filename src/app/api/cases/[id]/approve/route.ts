@@ -13,7 +13,7 @@ const Body = z.object({
 export const POST = withVisitor(async (req: Request, ctx: RouteContext<"/api/cases/[id]/approve">) => {
   const { id } = await ctx.params;
   const body = Body.safeParse(await req.json().catch(() => null));
-  if (!body.success) return Response.json({ error: body.error.message }, { status: 400 });
+  if (!body.success) return Response.json({ error: body.error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
   try {
     assertWritable();
     return Response.json(await approve(id, body.data));

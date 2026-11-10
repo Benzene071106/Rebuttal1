@@ -1,5 +1,6 @@
 import { runAnalysis } from "@/lib/analysis";
 import { plainError } from "@/lib/errors";
+import { liveRunLimit } from "@/lib/rate-limit";
 import { runAs, viewOnly, visitor, withVisitor } from "@/lib/visitor";
 
 export const maxDuration = 300;
@@ -13,6 +14,9 @@ export const POST = withVisitor(async (req: Request, ctx: RouteContext<"/api/cas
   const v = visitor();
   const fresh = new URL(req.url).searchParams.get("fresh") === "1";
   const savedOnly = viewOnly();
+  // A re-run always calls the model; a first look usually replays a saved run.
+  const limited = fresh && !savedOnly ? liveRunLimit(req, "fresh investigations") : null;
+  if (limited) return limited;
   const stream = new ReadableStream({
     start(controller) {
       const send = (o: unknown) => controller.enqueue(enc.encode(JSON.stringify(o) + "\n"));

@@ -74,7 +74,7 @@ export async function runAutopilot(id: string): Promise<CaseRecord | undefined> 
   }
 
   try {
-    await approve(id, { decision: verdict.act, response: r.response_to_paypal, by: "autopilot" });
+    await approve(id, { decision: verdict.act, response: r.response_to_paypal, by: "autopilot", autoRule: true });
     await updateCase(id, { autopilot: { action: verdict.act === "REFUND" ? "AUTO_REFUNDED" : "AUTO_FOUGHT", reason: verdict.reason, at: at() } });
     await addActivity(
       id,

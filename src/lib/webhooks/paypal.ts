@@ -26,7 +26,9 @@ async function handle(req: Request, as: Visitor): Promise<Response> {
   try {
     if (!(await gw.verifyWebhook(req.headers, event))) return Response.json({ error: "Signature check failed" }, { status: 401 });
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    // The reason (say, PAYPAL_WEBHOOK_ID not set) goes to the server log, not to the caller.
+    console.error("webhook signature check could not run:", e instanceof Error ? e.message : e);
+    return Response.json({ error: "Could not verify the event" }, { status: 500 });
   }
   if (!event.resource?.dispute_id) return Response.json({ error: "No dispute_id" }, { status: 400 });
 

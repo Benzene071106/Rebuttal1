@@ -43,7 +43,7 @@ export async function bulkApprove(ids: string[]): Promise<BulkResult> {
     const r = c.recommendation;
     try {
       // One at a time, so the self-healing layer handles each PayPal failure on its own.
-      await approve(id, { decision: r.decision, response: r.response_to_paypal, by: "seller" });
+      await approve(id, { decision: r.decision, response: r.response_to_paypal, by: "seller", autoRule: true });
       await addActivity(id, `You approved the agent's ${r.decision === "REFUND" ? "refund" : "evidence"} from the queue (bulk approve).`, "good");
       out.approved.push({ id, decision: r.decision, amount: Number(c.dispute.dispute_amount.value) });
     } catch (e) {

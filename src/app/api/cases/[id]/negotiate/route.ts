@@ -1,4 +1,5 @@
 import { negotiate } from "@/lib/negotiation";
+import { liveRunLimit } from "@/lib/rate-limit";
 import { assertWritable, runAs, visitor, withVisitor } from "@/lib/visitor";
 
 export const maxDuration = 300;
@@ -12,6 +13,10 @@ export const POST = withVisitor(async (req: Request, ctx: RouteContext<"/api/cas
     assertWritable();
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : String(e) }, { status: 422 });
+  }
+  if (body.max_refund !== undefined) {
+    const limited = liveRunLimit(req, "negotiations");
+    if (limited) return limited;
   }
   const enc = new TextEncoder();
   const v = visitor();

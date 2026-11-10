@@ -8,12 +8,16 @@ import { tenant, visitor } from "./visitor";
 
 export const DEFAULT_RULES: AutopilotRules = { enabled: true, auto_refund_max: 30, auto_fight_min_win: 0, max_auto_amount: 250, negotiate_max_pct: 0.4 };
 
+// Same limits as the rules panel, enforced for any client.
+const cents = (n: number) => Math.abs(Math.round(n * 100) - n * 100) < 1e-6;
+const money = z.number().min(0).max(10_000).refine(cents, { message: "Money limits take whole cents only." });
+
 export const RulesSchema = z.object({
   enabled: z.boolean(),
-  auto_refund_max: z.number().min(0).max(10_000),
-  auto_fight_min_win: z.number().min(0).max(1),
-  max_auto_amount: z.number().min(0).max(10_000),
-  negotiate_max_pct: z.number().min(0).max(0.95).default(DEFAULT_RULES.negotiate_max_pct),
+  auto_refund_max: money,
+  auto_fight_min_win: z.number().min(0).max(1).refine((n) => n === 0 || n >= 0.5, { message: "Send evidence on its own at: 0 (never) or 50 to 100%." }),
+  max_auto_amount: money,
+  negotiate_max_pct: z.number().min(0.05, { message: "The negotiator limit must be 5 to 95%." }).max(0.95, { message: "The negotiator limit must be 5 to 95%." }).default(DEFAULT_RULES.negotiate_max_pct),
 }).refine((r) => r.auto_refund_max <= r.max_auto_amount, {
   // Same cross-field check as the rules grid, enforced for any client.
   message: "The auto-refund limit can't be above the hard cap.",
@@ -23,7 +27,9 @@ export const RulesSchema = z.object({
 export async function getRules(): Promise<AutopilotRules> {
   const saved = await storeFor(tenant()).getRules();
   // Rules saved before a field existed get its default.
-  return saved ? RulesSchema.parse({ ...DEFAULT_RULES, ...saved }) : { ...DEFAULT_RULES };
+  // Rules saved before the limits were tightened fall back to the defaults.
+  const ok = saved ? RulesSchema.safeParse({ ...DEFAULT_RULES, ...saved }) : null;
+  return ok?.success ? ok.data : { ...DEFAULT_RULES };
 }
 
 export async function setRules(next: AutopilotRules): Promise<AutopilotRules> {

@@ -30,6 +30,9 @@ type MockState = { rows: Map<string, MockRow>; nextSeq: number; filed: Set<strin
 // Keeps one visitor's simulator (and the dispute memory) a sensible size.
 export const MAX_OPEN_SIM_DISPUTES = 50;
 
+// Below this share of the claim, the simulated buyer refuses a one-shot offer.
+export const MIN_OFFER_SHARE = 0.15;
+
 export type FaultKind = "OUTAGE" | "TOKEN_EXPIRED" | "INSUFFICIENT_FUNDS";
 const FAULT_CALLS: Record<FaultKind, number> = { OUTAGE: 2, TOKEN_EXPIRED: 1, INSUFFICIENT_FUNDS: 1 };
 
@@ -359,6 +362,8 @@ export const mockGateway: PayPalGateway = {
   async makeOffer(id, offer) {
     maybeFail("make-offer", id);
     const r = row(id);
+    if (r.dispute.dispute_outcome) throw new Error(`PayPal POST /v1/customer/disputes/${id}/make-offer failed (422): the dispute is already resolved.`);
+    if (r.dispute.dispute_life_cycle_stage === "CHARGEBACK") throw new Error(`PayPal POST /v1/customer/disputes/${id}/make-offer failed (422): offers are not allowed on a chargeback.`);
     r.submissions.push({ kind: "offer", ...offer });
     touch(r, {
       status: "WAITING_FOR_BUYER_RESPONSE",
@@ -397,10 +402,20 @@ export const mockGateway: PayPalGateway = {
 
   async simulateRuling(id, outcome) {
     const r = row(id);
+    if (r.dispute.dispute_outcome) throw new Error(`PayPal POST /v1/customer/disputes/${id}/adjudicate failed (422): the dispute is already resolved.`);
     const offered = r.dispute.offer?.seller_offered_amount;
     if (r.dispute.status === "WAITING_FOR_BUYER_RESPONSE" && offered) {
-      // Sandbox buyer accepts the seller's offer.
-      touch(r, { status: "RESOLVED", dispute_outcome: { outcome_code: "RESOLVED_WITH_PAYOUT", amount_refunded: offered } });
+      // The simulated buyer accepts a fair offer. A token one (under 15% of the claim)
+      // is turned down, the buyer escalates and PayPal refunds them in full.
+      if (Number(offered.value) >= Number(r.dispute.dispute_amount.value) * MIN_OFFER_SHARE) {
+        touch(r, { status: "RESOLVED", dispute_outcome: { outcome_code: "RESOLVED_WITH_PAYOUT", amount_refunded: offered } });
+      } else {
+        touch(r, {
+          status: "RESOLVED",
+          messages: [...(r.dispute.messages ?? []), { posted_by: "BUYER", time_posted: new Date().toISOString(), content: "That offer is far too low. I'm asking PayPal to decide." }],
+          dispute_outcome: { outcome_code: "RESOLVED_BUYER_FAVOUR", amount_refunded: r.dispute.dispute_amount },
+        });
+      }
       return;
     }
     touch(r, {
@@ -418,8 +433,13 @@ export const mockGateway: PayPalGateway = {
     if (open >= MAX_OPEN_SIM_DISPUTES) throw new Error(`The simulator holds at most ${MAX_OPEN_SIM_DISPUTES} open disputes. Answer some, or use Reset in Simulator tools.`);
     const s = scenarioKey ? SCENARIOS.find((x) => x.key === scenarioKey) : SCENARIOS.find((x) => !st.filed.has(x.key));
     if (!s) {
-      // Every scenario is already in the inbox: file a fresh copy of the first one.
-      return addScenario(st, SCENARIOS[0]).dispute;
+      // Every scenario is already in the inbox. Allow one repeat of the signed-delivery
+      // order, for the "autopilot fights it" walkthrough, then stop: PayPal allows one
+      // dispute per transaction, and a queue of copies looks broken.
+      const first = SCENARIOS[0];
+      const copies = [...st.rows.values()].filter((r) => r.scenario.key === first.key).length;
+      if (copies >= 2) throw new Error("No more demo orders to dispute. Use Simulator tools → Reset demo to start again.");
+      return addScenario(st, first).dispute;
     }
     return addScenario(st, s).dispute;
   },
